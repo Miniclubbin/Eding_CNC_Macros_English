@@ -1,0 +1,17 @@
+;Calibrated for Mafell FM1000 PV-WS 230 V 50 Hz
+;Speed PWM calibration table for spindle 0
+;This table contains max 15 correction points
+;Speed    PWM Percentage
+   4000.00	0.00
+   6100.00	10.00
+   8200.00	20.00
+  10300.00	30.00
+  12400.00	40.00
+  14500.00	50.00
+  16600.00	60.00
+  18700.00	70.00
+  20800.00	80.00
+  22900.00	90.00
+  25000.00	100.00
+
+ 
