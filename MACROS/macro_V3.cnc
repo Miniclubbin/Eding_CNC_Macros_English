@@ -686,14 +686,14 @@ Sub TOOL_CHANGE_DLG  ; Call Tool Change Sequence
 		    #5011 = #5008				; [New Tool Number] reset to [current tool number]
 		ELSE
 	    	#3510 = 1					; set FLAG Tool Change initiated from GUI (1= initiated from GUI)
-	    	gosub TOOL_CHANGE
+	    	gosub change_tool
 		    #3510 = 0					; Reset FLAG Tool Change initiated from GUI
 		ENDIF
     ENDIF
 ENDSUB
 
 ;***************************************************************************************
-sub TOOL_CHANGE ; TOOL CHANGE SEQUENCE
+sub change_tool ; TOOL CHANGE SEQUENCE
 	;---------------------------------------------------------------------------------------
     #5015 = 0	; set FLAG: Tool Change not yet executed
     M5 M9	; Spindle off, cooling off
@@ -728,7 +728,7 @@ sub TOOL_CHANGE ; TOOL CHANGE SEQUENCE
 					IF [#5011 > 99] 
 						Dlgmsg "Tool Number Incorrect: Please enter Tool Number 1-99"
 						IF [#5398 == 1] ;OK pressed
-							gosub TOOL_CHANGE
+							gosub change_tool
 						ELSE
 							errmsg "Tool Change failed"
 						ENDIF
