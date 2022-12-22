@@ -1,5 +1,5 @@
 ;***************************************************************************************
-sub TOOL_CHANGE ; TOOL CHANGE SEQUENCE
+sub change_tool ; TOOL CHANGE SEQUENCE
 	;---------------------------------------------------------------------------------------
     #5015 = 0	; set FLAG: Tool Change not yet executed
     M5 M9	; Spindle off, cooling off
@@ -37,7 +37,7 @@ sub TOOL_CHANGE ; TOOL CHANGE SEQUENCE
 					IF [#5011 > 99] 
 						Dlgmsg "Tool Number Incorrect: Please enter Tool Number 1-99"
 						IF [#5398 == 1] ;OK pressed
-							gosub TOOL_CHANGE
+							gosub change_tool
 						ELSE
 							errmsg "Tool Change failed"
 						ENDIF
