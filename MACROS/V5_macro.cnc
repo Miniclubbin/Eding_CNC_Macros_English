@@ -1,7 +1,7 @@
 ;***************************************************************************************
-;DEC_V3
+;DEC_V5
 ;EDING CNC
-;MACRO CNC V2.1e.1 Without ATC
+;Based on SOROTEC MACRO CNC V2.1e.1 Without ATC
 ;Derived from SOROTEC
 ;Translated by MiniClubbin
 ;***************************************************************************************
@@ -151,10 +151,10 @@
 	IF [#3500 == 0]  ; IF [Initialize] is 0  proceed
 		#3500 = 1			;set FLAG [initialized]
 		IF [#4504 == 0]   	
-			#4504 =50	; set [TLO Fast probing feed] (mm/min)
+			#4504 =50	; set [Tool Fast probing feed] (mm/min)
 		ENDIF
 		IF [#4505 == 0]   	
-			   #4505 =20  	; set [TLO Slow probing feed] for exact measurement (mm/min)  
+			   #4505 =20  	; set [Tool Slow probing feed] for exact measurement (mm/min)  
 		ENDIF
 		IF [#4511 == 0]   	
 		   	#4511 =10	; set [probe Clearance height]	
@@ -179,7 +179,7 @@ Sub user_2 ; Tool Length Measurement
 ENDSUB
 ;***************************************************************************************
 Sub user_3 ; Tool change dlg
-	GOSUB change_tool
+	GOSUB TOOL_CHANGE_DLG
 ENDSUB
 ;***************************************************************************************
 Sub user_4 ; Move to Machine 0 (Home)
@@ -419,14 +419,14 @@ ENDSUB
 sub SENSOR_CHECK ; Check Tool Length Sensor Status before measurement
 	IF [#4400 == 0]	; [Tool Length Sensor-Type] is 0 (0= Normally Open)
 	     #185 = 1	; set error-status (1= open)
-	ELSE			; [Tool Length Sensor-Type] is 1 (0= Normally Closed)
+	ELSE		; [Tool Length Sensor-Type] is 1 (0= Normally Closed)
 	    #185 = 0	; set error-status (0= closed)
 	ENDIF
 	IF [#5068 == #185]	; Sensor status = error status (0=closed, 1=open)
 		dlgmsg "Verify tool sensor is functional"
 		IF [#5398 == 1]	; OK-button
 		    IF [#5068 == #185]	; Sensor status = error status (0=closed, 1=open)
-				errmsg "Tool sensor error, verify and try again."
+			errmsg "Tool sensor error, verify and try again."
 		    ENDIF
 		ELSE
 		    msg "Operation canceled"
@@ -440,22 +440,22 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 		; Sensor Status check -----------------------------
 		GOSUB SENSOR_CHECK
 		;--------------------------------------------------
-		#4518 = 0 						; FLAG: Move back to operation starting point (1=YES, 0=NO)
-		IF [#3505 == 0] 				; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
+		#4518 = 0 				; FLAG: Move back to operation starting point (1=YES, 0=NO)
+		IF [#3505 == 0] 			; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 			DlgMsg "Measure Work Z 0" 
 		ENDIF	
-		#3505 = 0						; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
+		#3505 = 0				; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 		IF [[#5398 == 1] AND [#5397 == 0]]	; OK button pressed and RENDER Mode off !!
-			M5						; Spindle shutdown
+			M5				; Spindle shutdown
 			msg "Probing Z height"	
 			G38.2 G91 z-50 F[#4512] 	; Probe towards sensor until change in signal at probe feedrate
-			IF [#5067 == 1]				; IF sensor point activated
+			IF [#5067 == 1]			; IF sensor point activated
 			    G38.2 G91 z20 F[#4513]	; Slowly RETRACT until sensor deactivates
-			    G90						; absolute position mode
-	 		    IF [#5067 == 1]			; IF sensor point activated
-					G0 Z#5063			; Rapid move to sensor activation point
-					G92 Z[#4510] 		; Overwrite current Z height with probe height
-					G0 Z[#4510 + 5] 	; Rapid retract to 5mm above probe height
+			    G90				; absolute position mode
+	 		    IF [#5067 == 1]		; IF sensor point activated
+					G0 Z#5063	; Rapid move to sensor activation point
+					G92 Z[#4510] 	; Overwrite current Z height with probe height
+					G0 Z[#4510 + 5] ; Rapid retract to 5mm above probe height
 					msg"Z-0 probe complete"
 			    ELSE
 					G90 
@@ -474,11 +474,11 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 	ELSE
 		#3505 = 0			; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 		DlgMsg "Hit OK to measure tool first" 
-		IF [#5398 == 1] 	;OK pressed
+		IF [#5398 == 1] 		;OK pressed
 	   		#4514 = #5071		; set Return point for X Pos to current Machine position
 			#4515 = #5072		; set Return point for Y Pos to current Machine position
 			#4516 = #5073		; set Return point for Z Pos to current Machine position
-			#4518 = 1			; FLAG: Move back to operation starting point (1=YES, 0=NO)
+			#4518 = 1		; FLAG: Move back to operation starting point (1=YES, 0=NO)
 			GoSub TOOL_MEASURE
 		ENDIF
 	ENDIF
@@ -490,25 +490,25 @@ Sub Z_PROBE_VCARVE ; Probe for Work Z-zero height
 		GOSUB SENSOR_CHECK
 		;--------------------------------------------------
 		#4518 = 0 		; set FLAG: Move back to operation starting point (1=YES, 0=NO)
-		IF [#3505 == 0] ; Tool Length Measurement not called from handwheel (1=Handwheel)
+		IF [#3505 == 0] 	; Tool Length Measurement not called from handwheel (1=Handwheel)
 ;***VARIANCE****************************************************************************
 			DlgMsg "Offset actual Z0 for VCarve tolerance" ; Generate dialog to confirm on screen
 ;***VARIANCE****************************************************************************
 		ENDIF	
 		#3505 = 0	; reset FLAG Tool Length Measurement called from handwheel (1=Handwheel)
 		IF [[#5398 == 1] AND [#5397 == 0]]	; [OK button] pressed and [RENDER Mode] off
-			M5							; Spindle shutdown
+			M5				; Spindle shutdown
 			msg "Probing Z height"	
 			G38.2 G91 z-50 F[#4512] 	; Lower Z 50mm at [fast probe feed] until sensor triggered and stop
-			IF [#5067 == 1]				; sensor triggered, value recorded to [#5063]
+			IF [#5067 == 1]			; sensor triggered, value recorded to [#5063]
 			    G38.2 G91 z20 F[#4513]	; Raise Z until sensor triggered at [slow probe feed] and stop
-			    G90						; absolute position mode
-	 		    IF [#5067 == 1]			; sensor triggered, value recorded to [#5063]
-					G0 Z[#5063]			; Rapid Z move to [recorded trigger point]
+			    G90				; absolute position mode
+	 		    IF [#5067 == 1]		; sensor triggered, value recorded to [#5063]
+					G0 Z[#5063]	; Rapid Z move to [recorded trigger point]
 ;***VARIANCE****************************************************************************
-					G92 Z[#4510+.1] 	; ***Offset Z by sensor height #4510 + .1mm for VCarve tolerance***
+					G92 Z[#4510+.1] ; ***Offset Z by sensor height #4510 + .1mm for VCarve tolerance***
 ;***VARIANCE****************************************************************************
-					G0 Z[#4510 + 5] 	; Rapid retract to 5mm above [sensor height]
+					G0 Z[#4510 + 5] ; Rapid retract to 5mm above [sensor height]
 					msg"Z-0 probe complete"
 				ELSE
 					G90 
@@ -525,13 +525,13 @@ Sub Z_PROBE_VCARVE ; Probe for Work Z-zero height
 			ENDIF
 		ENDIF   	
 	ELSE
-		#3505 = 0			; reset FLAG Tool Length Measurement called from handwheel (1=Handwheel)
+		#3505 = 0		; reset FLAG Tool Length Measurement called from handwheel (1=Handwheel)
 		DlgMsg "ERROR - Hit OK to measure tool first" 
 		IF [#5398 == 1] 	; [OK button] pressedOK pressed
 	   		#4514 = #5071	; set Return point for X Pos to current Machine position
 			#4515 = #5072	; set Return point for Y Pos to current Machine position
 			#4516 = #5073	; set Return point for Z Pos to current Machine position
-			#4518 = 1		; set FLAG: Move back to operation starting point (1=YES, 0=NO)
+			#4518 = 1	; set FLAG: Move back to operation starting point (1=YES, 0=NO)
 			GoSub TOOL_MEASURE
 		ENDIF
 	ENDIF
@@ -543,16 +543,16 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 	#5017 = [#4503]	; Maximum Tool Length
 	#5019 = [#4507]	; set variable to Tool Length Sensor X-Axis Position
 	#5020 = [#4508]	; set variable to Tool Length Sensor Y-Axis Position
-	#5021 = 0 		; Measured tool length variable
+	#5021 = 0 	; Measured tool length variable
 
 	;--------------------------------------------------
 	;3DFinder - Cancel Tool Length Measurement
 	;--------------------------------------------------
 	;*********UNCOMMENT IF USING 3D PROBE*************
 	;
-	;IF [#5008 > 97]			; Tool 98 and 99 are 3D-button - no Tool Length Measurement
+	;IF [#5008 > 97]		; Tool 98 and 99 are 3D-button - no Tool Length Measurement
 	;	msg "Tool is 3D-button -> Tool Length Measurement not executed"
-	;	M30				; END of sequence
+	;	M30			; END of sequence
 	;ENDIF
 
 	; Sensor Status check -----------------------------
@@ -574,54 +574,54 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 
 	;move to tool length sensor position
 	M5
-	M9							; Turn off spindle and coolant
-	G53 G0 z[#4506]				; Move to Z Safe Height [Machine] 
-    G53 G0 x[#5019] y[#5020]	; Move to Tool Length Sensor Position
-	G53 G0 z[#4509 + #5017 + 10] ; Rapid Z to [MCS chuck probe trigger] + [estimated Tool Length] + 10 = MCS Z distance
+	M9				; Turn off spindle and coolant
+	G53 G0 z[#4506]			; Move to Z Safe Height [Machine] 
+    G53 G0 x[#5019] y[#5020]		; Move to Tool Length Sensor Position
+	G53 G0 z[#4509 + #5017 + 10] 	; Rapid Z to [MCS chuck probe trigger] + [estimated Tool Length] + 10 = MCS Z distance
 
 	; measure tool length, save results, apply Z-offset if needed
-	G53 G38.2 Z[#4509] F[#4504]	 ; Probe Z to sensor height with Probe Feed #4504
-	IF [#5067 == 1]				 ; Sensor is triggered
-	    G91 G38.2 Z20 F[#4505]	 ; Reverse Z at [Probe feed] until trigger releases
-	    G90						 ; Mode for absolute coordinates
-	    IF [#5067 == 1]			 ; Sensor is triggered
-			G53 G0 z[#4506]	     ; Z Safe Height [Machine]
-			#5021 = [#5053 - #4509]	; Recorded tool length = sensor point - chuck height
+	G53 G38.2 Z[#4509] F[#4504]	; Probe Z to sensor height with Probe Feed #4504
+	IF [#5067 == 1]			; Sensor is triggered
+	    G91 G38.2 Z20 F[#4505]	; Reverse Z at [Probe feed] until trigger releases
+	    G90				; Mode for absolute coordinates
+	    IF [#5067 == 1]				; Sensor is triggered
+			G53 G0 z[#4506]	     		; Z Safe Height [Machine]
+			#5021 = [#5053 - #4509]		; Recorded tool length = sensor point - chuck height
 			msg "Tool Length = " #5021
-			IF [#3501 == 1] 				; Was Tool already Measured? 1=YES
-			    #4502 = [#4501]				; save last tool's length
-			    #4501 = [#5021]				; save new tool's length
-			    #3502 = [#4501 - #4502]			; Record tool length dIFference
-			    G92 Z[#5003 - #3502]		 	; set Z-0 [Current Z Work]-[measured difference]
+			IF [#3501 == 1] 		; Was Tool already Measured? 1=YES
+			    #4502 = [#4501]		; save last tool's length
+			    #4501 = [#5021]		; save new tool's length
+			    #3502 = [#4501 - #4502]	; Record tool length dIFference
+			    G92 Z[#5003 - #3502]	; set Z-0 [Current Z Work]-[measured difference]
 			ELSE
-			    #4501 = [#5021]				; Use current Tool Length measurement value
+			    #4501 = [#5021]		; Use current Tool Length measurement value
 	   	    ENDIF
 			; Move back to Z0 probe position if flagged [4518]
-			IF [#4518 == 1] 				; FLAG: Move back to operation starting point (1=YES, 0=NO)
-			    G0 G53 Z#4506				; Z Safe Height [Machine]
-			    G0 G53 X#4514 Y#4515		; Move to previous position
-			    #4518 = 0					; FLAG: Move back to starting point (1=YES, 0=NO)
-			    #3501 = 1					; FLAG: Was Tool already Measure? (1=YES, 0=NO)
+			IF [#4518 == 1] 		; FLAG: Move back to operation starting point (1=YES, 0=NO)
+			    G0 G53 Z#4506		; Z Safe Height [Machine]
+			    G0 G53 X#4514 Y#4515	; Move to previous position
+			    #4518 = 0			; FLAG: Move back to starting point (1=YES, 0=NO)
+			    #3501 = 1			; FLAG: Was Tool already Measure? (1=YES, 0=NO)
 			ELSE
-			    IF [#4519 == 0] 			; ### 0 ### What to do after Tool Length Measurement: 0= pre defined point
-					G0 G53 Z#4506				; Z Safe Height [Machine]
-					G0 G53 X#4524 Y#4525		; move to configured point 
+			    IF [#4519 == 0] 		; ### 0 ### What to do after Tool Length Measurement: 0= pre defined point
+					G0 G53 Z#4506		; Z Safe Height [Machine]
+					G0 G53 X#4524 Y#4525	; move to configured point 
 			    ENDIF
 			    IF [#4519 == 1] 			; ### 1 ### What to do after Tool Length Measurement: 1= Work 0 
-					G0 G53 Z#4506				; Z Safe Height [Machine]
-					G0 X0 Y0				; Work 0
+					G0 G53 Z#4506		; Z Safe Height [Machine]
+					G0 X0 Y0		; Work 0
 				ENDIF	
 			    IF [#4519 == 2] 			; ### 2 ### What to do after Tool Length Measurement: 2= Tool Change Position
-					G0 G53 Z#4523				; Tool Change Position Z
-					G0 G53 X#4521 Y#4522			; Tool Change Position XY
+					G0 G53 Z#4523		; Tool Change Position Z
+					G0 G53 X#4521 Y#4522	; Tool Change Position XY
 			    ENDIF
 			    IF [#4519 == 3] 			; ### 3 ### What to do after Tool Length Measurement: 3= Machine 0
-					G0 G53 Z#4506				; Z Safe Height [Machine]
-					G0 G53 X0 Y0				; Machine 0
+					G0 G53 Z#4506		; Z Safe Height [Machine]
+					G0 G53 X0 Y0		; Machine 0
 			    ENDIF
 			ENDIF
-			#4518 = 0					; FLAG: Move back to operation starting point (1=YES, 0=NO)
-   	        #3501 = 1				; FLAG: Was Tool already Measure? (1=YES, 0=NO)
+			#4518 = 0				; FLAG: Move back to operation starting point (1=YES, 0=NO)
+   	        #3501 = 1					; FLAG: Was Tool already Measure? (1=YES, 0=NO)
 	   	ELSE
 			errmsg "ERROR: No Sensor triggered - CONFIRM RESET"
 	    ENDIF
@@ -641,7 +641,7 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 		ENDIF
 	
 		; 1 = Move to Work0
-		IF [[#4520] == 1] 			; Tool Change Type  0= Do nothing, 1 = Move to Work0, 2= Move to Work0 + Measure Wear 
+		IF [[#4520] == 1] 				; Tool Change Type  0= Do nothing, 1 = Move to Work0, 2= Move to Work0 + Measure Wear 
 			#3503 = 1				; Is Tool already inserted?  1=Yes
 			IF [[#5011] == [#5008]]  ;IF new tool matches Current Tool
 				Dlgmsg "Tool is already inserted. Measure tool?"
@@ -651,8 +651,8 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 					#3503 = 0
 				ENDIF
 			ENDIF
-			IF [#3503 == 1] 				; Is Tool already inserted?  1=Yes
-				G53 G0 Z[#4523]				; Safe Height
+			IF [#3503 == 1] 			; Is Tool already inserted?  1=Yes
+				G53 G0 Z[#4523]			; Safe Height
 				G53 G0 X[#4521] Y[#4522]	; Tool Change Position X Y
 				Dlgmsg "Please insert tool" "Current Tool:" 5008 "New Tool:" 5011
 				IF [#5398 == 1] ;OK pressed
@@ -664,7 +664,7 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 							errmsg "Tool Change failed"
 						ENDIF
 					ELSE
-						#5015 = 1		; Tool Change executed 1=Yes
+						#5015 = 1	; Tool Change executed 1=Yes
 					ENDIF
 				ELSE
 					msg "Tool Change canceled"
@@ -686,7 +686,7 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 			IF [#3503 == 1] 
 				IF [[#5008 > 0] AND [#4529 == 1]]	; Current Tool Number larger than 0 and Break Check activated
 					#3504 = 1			; FLAG whether Break Check from automatic initiated was 1=automatic
-					GOSUB TOOL_MEASURE_WEAR			; Break Check called
+					GOSUB TOOL_MEASURE_WEAR		; Break Check called
 					#3504 = 0			; FLAG whether Break Check from automatic initiated was 1=automatic
 				ELSE
 					msg "Break Check not executed"
@@ -716,10 +716,10 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 		IF [[#5015] == 1]    ; Tool Change-Process 1= Change was executed
 			msg "Tool " #5008" changed to Tool " #5011 " "		
 	        M6 T[#5011]				; New Tool Number set
-			IF [#4520 == 2] 			; Tool Change Type  0= Do nothing, 1 = Move to Work0, 2= Move to Work0 + Measure Wear 
-			    gosub TOOL_MEASURE			; Tool Length Measurement called  [WARNING - Must occur after M6 T.. command is called]
+			IF [#4520 == 2] 		; Tool Change Type  0= Do nothing, 1 = Move to Work0, 2= Move to Work0 + Measure Wear 
+			    gosub TOOL_MEASURE		; Tool Length Measurement called  [WARNING - Must occur after M6 T.. command is called]
 			ENDIF
-			#5015 = 0				; Tool Change executed 1=Yes
+			#5015 = 0			; Tool Change executed 1=Yes
 		ENDIF
     ENDIF ; SIMULATOR Mode
 ENDSUB
@@ -748,7 +748,7 @@ Sub TOOL_NBR_UPDATE  ; Update Tool Number
 		#5011 = #5008				; [New Tool Number] reset to [current tool number]
 		M30
     ELSE
-		#5015 = 1					; Was tool successfully updated 1=Yes
+		#5015 = 1				; Was tool successfully updated 1=Yes
 		IF [[#5011] > 0] 
 		    M6 T[#5011]
 		ENDIF
@@ -919,7 +919,7 @@ Sub TOOL_MEASURE_WEAR ; Tool Wear Detection
 	; #4509 Distance between spindle chuck and top of tool sensor at Machine Z0 (must be negative)     	(Tool Length Measurement)
 	; #5021 - Measured Tool Length from the previous Measurement
 	; #4529 = 0
-	; IF [#4529 == 1]			 					; #4529 FLAG whether Automatic Tool Wear is enabled
+	; IF [#4529 == 1]			 				; #4529 FLAG whether Automatic Tool Wear is enabled
 
 	IF [#3501 == 1]								; FLAG (Was Tool already Measured? 1=YES)
 		; Sensor Status check -----------------------------
@@ -957,20 +957,20 @@ Sub TOOL_MEASURE_WEAR ; Tool Wear Detection
 				ENDIF
 				IF [#3504 == 0]					; FLAG whether Break Check from automatic initiated was 1=automatic
 				    IF [#4519 == 0] 			; ### 0 ### What to do after Tool Length Measurement: 0= pre defined point
-						G0 G53 Z#4506				; Z Safe Height [Machine]
+						G0 G53 Z#4506			; Z Safe Height [Machine]
 						G0 G53 X#4524 Y#4525		; move to configured point 
 				    ENDIF
 				    IF [#4519 == 1] 			; ### 1 ### What to do after Tool Length Measurement: 1= Work 0 
-						G0 G53 Z#4506				; Z Safe Height [Machine]
-						G0 X0 Y0				; Work 0
+						G0 G53 Z#4506			; Z Safe Height [Machine]
+						G0 X0 Y0			; Work 0
 					ENDIF	
 				    IF [#4519 == 2] 			; ### 2 ### What to do after Tool Length Measurement: 2= Tool Change Position
-						G0 G53 Z#4523				; Tool Change Position Z
-						G0 G53 X#4521 Y#4522			; Tool Change Position XY
+						G0 G53 Z#4523			; Tool Change Position Z
+						G0 G53 X#4521 Y#4522		; Tool Change Position XY
 				    ENDIF
 				    IF [#4519 == 3] 			; ### 3 ### What to do after Tool Length Measurement: 3= Machine 0
-						G0 G53 Z#4506				; Z Safe Height [Machine]
-						G0 G53 X0 Y0				; Machine 0
+						G0 G53 Z#4506			; Z Safe Height [Machine]
+						G0 G53 X0 Y0			; Machine 0
 				    ENDIF
 					IF [#4519 == 4] 			; What to do after Tool Length Measurement 4= Remain in place		
 					ENDIF
@@ -1023,10 +1023,10 @@ Sub PROBE_3D ;3D EdgeFinder Probing
 	IF [#4550 == 2]
 		G91 G38.2 x-20 F[#4504]
 		G90
-		IF [#5067 == 1]					; When Sensor is triggered
+		IF [#5067 == 1]				; When Sensor is triggered
 	    	G91 G38.2 x10 F[#4505]
 			G90
-			IF [#5067 == 1]				; When Sensor is triggered
+			IF [#5067 == 1]			; When Sensor is triggered
 				G92 X#4552
 				G91 G00 x1 
 				G90
@@ -1040,10 +1040,10 @@ Sub PROBE_3D ;3D EdgeFinder Probing
 	IF [#4550 == 3]
 	    G91 G38.2 y20 F[#4504]
     	G90
-		IF [#5067 == 1]					; When Sensor is triggered
+		IF [#5067 == 1]				; When Sensor is triggered
 		    G91 G38.2 y-10 F[#4505]
 			G90
-			IF [#5067 == 1]				; When Sensor is triggered
+			IF [#5067 == 1]			; When Sensor is triggered
 				G92 y#4553
 				G91 G00 y-1 
 				G90
@@ -1078,7 +1078,7 @@ Sub SPINDLE_WARMUP  ; Spindle Warmup
 		G53 G00 Z0
 		M03 S#4532 	;   #4532 RPM Step 1 for Spindle Warmup
 		G04 P#4533	;   #4533 Runtime Step 1 for Spindle Warmup
-		M03 S#4534  ;   #4534 RPM Step 2 for Spindle Warmup
+		M03 S#4534  	;   #4534 RPM Step 2 for Spindle Warmup
 		G04 P#4535	;   #4535 Runtime Step 2 for Spindle Warmup
 		M03 S#4536	;   #4536 RPM Step 3 for Spindle Warmup
 		G04 P#4537	;   #4537 Runtime Step 3 for Spindle Warmup
