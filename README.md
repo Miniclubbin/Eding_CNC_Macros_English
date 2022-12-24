@@ -15,6 +15,7 @@ With my current macro.cnc file, a tool change M6 command will:
 # MACROS Folder
 This folder contains a few items:
 - SUB ROUTINES folder containing individual macro routines
+  - These are currently V3 and may not exactly match the latest V5 macro
   - USER_MACROS and HANDWHEEL_MACROS files reference the SUB_ files. You can combine the contents of each of these files into your macro.cnc file or copy the latest version of macro.cnc from this folder.
 - Default Eding CNC macro.cnc to use as a guide/template
 - Spindle PWM compensation table for Mafell FM1000 PV-WS 230V/50 Hz router
