@@ -1,7 +1,7 @@
 # Overview
 Macros and other specific files to customize Eding CNC.
 
-These macros were derived from Sorotec macro.cnc V2.1e without ATC. I have translated the comments to english, changed the naming sonvention for sub routines, and re-ordered the user macros to better suit my operations. 
+These macros were derived from Sorotec macro.cnc V2.1e without ATC. I have translated the comments to english, changed the naming convention for sub routines, and re-ordered the user macros to better suit my operations. 
 
 I currently use this with a Sorotec Compact Line 1007 with Mafell 1000w quick tool change router and Sorotec tool length sensor. I program using Vectric VCarve and include manual tool changes in the post processor. 
 
