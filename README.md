@@ -33,3 +33,6 @@ This folder contains a few items:
 
 # POST PROCESSOR Folder
 This folder contains the latest Post Processor for Vectric software.
+
+# dialogPictures Folder
+This folder contains updated pictures used in macro dialogs. The naming of the files matches the dialog window and must match to be called correctly. If the name doesn't match the dialog window, function will not be afected it just won't look as nice :)
