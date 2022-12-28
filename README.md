@@ -1,9 +1,17 @@
 # Overview
 Macros and other specific files to customize Eding CNC.
 
+## First of all, major credit to Sorotec for creating the original macro file and serving as the basis for this undertaking!
+
 These macros were derived from Sorotec macro.cnc V2.1e without ATC. I have translated the comments to english, changed the naming convention for sub routines, and re-ordered the user macros to better suit my operations. See the changelog at the top of the macro file for more information. Sorry if it's not exact, it has been a long time working on this!
 
-I currently use this with a Sorotec Compact Line 1007 with Mafell 1000w quick tool change router and Sorotec tool length sensor. I program using Vectric VCarve and include manual tool changes in the post processor. 
+If you want to use these files, simply copy the files into your Eding CNC folder on the C: drive:
+  - Rename the macro files to "macro.cnc" and "user_macro.cnc" and place in your "C:\CNC4.03\" directory
+  - Drag the icon files into your "C:\CNC4.03\icons\op_f_key\user\" directory
+  - Drag the dialog pictures files into your "C:\CNC4.03\dialogPictures\" directory
+  - Save the post processor file and add to Vectric software through their dialog
+
+I currently use this with a Sorotec Compact Line 1007 with Mafell 1000w quick tool change router and Sorotec tool length sensor. I program CAD/CAM using Vectric VCarve and include manual tool changes in the post processor. 
 
 With my current macro.cnc file, a tool change M6 command will:
 - pause a running job
