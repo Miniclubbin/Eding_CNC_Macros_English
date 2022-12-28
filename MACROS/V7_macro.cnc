@@ -206,7 +206,7 @@ sub home_all ; HOMING
 	
 	; WORKPIECE ROTATION RESET
 	IF [#68 == 1] ; if workpiece rotation compensation active
-		"dlgmsg "Reset G68 rotation offset?"
+		dlgmsg "Reset G68 rotation offset?"
 		IF [#5398 == 1] ; user pressed OK
 			G69 ; cancel workpiece rotation compensation
 			#68 = 0 ; reset FLAG workpiece rotation compensation active
