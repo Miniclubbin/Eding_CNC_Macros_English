@@ -7,7 +7,7 @@ These macros were derived from Sorotec macro.cnc V2.1e without ATC. I have trans
 
 If you want to use these files, simply copy the files into your Eding CNC folder on the C: drive:
   - Rename the macro files to "macro.cnc" and "user_macro.cnc" and place in your "C:\CNC4.03\" directory
-  - Drag the icon files into your "C:\CNC4.03\icons\op_f_key\user\" directory
+  - Drag the icon files into your "C:\CNC4.03\icons\op_f_key\user\" directory. Check out this German YouTube video for an overview on custom icons: https://youtu.be/qWU9Y7m8R6U?t=616
   - Drag the dialog pictures files into your "C:\CNC4.03\dialogPictures\" directory
   - Save the post processor file and add to Vectric software through their dialog
 
