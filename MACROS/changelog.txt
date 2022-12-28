@@ -1,0 +1,27 @@
+;***************************************************************************************
+;2022DEC_V7
+;EDING CNC
+;Based on SOROTEC MACRO CNC V2.1e.1 Without ATC
+;Derived from SOROTEC
+;Translated by MiniClubbin
+;***************************************************************************************
+;CHANGELOG:
+;Formatted spacing to enable folding in VSCode
+;Renamed subroutines for easier user button assignment
+;Split user macros into user_macro.cnc file for subroutine mapping
+;Split sensor_check into separate subroutine
+;Optimized sub Z_PROBE to return to probing location after tool measurement
+;Optimized sub tool_measure return-position logic
+;Optimized sub config to match new naming convention
+;Optimized sub config to skip unused subroutines
+;Optimized sub TOOL_MEASURE_WEAR to include cancel and return-position logic 
+;Added sub TOOL_SENSOR_CALIBRATE to calibrate spindle chuck height before use in tool length measurement
+;Added sub Z_PROBE_VCARVE to set Z0 .1mm above workpiece
+;Added several movement subroutines to call positional moves to various frequented locations for use as handwheel macros
+;Added M30 to some subroutines for cancelation logic
+;Added terminal message for routine tracking/debugging
+;Added ELSE logic for dialog cancel
+;Added FLAG #68 to track workpiece rotation compensation active
+;Added workpiece rotation reset to homing sequence
+;Replaced several error messages with normal terminal messages to speed up workflow
+;***************************************************************************************
