@@ -1,5 +1,6 @@
 # Overview
-Macros and other specific files to customize Eding CNC.
+Macros and other specific files to customize Eding CNC. For a great explanation of why and how to use macros, check out this website: 
+https://schallbert.de/macros-for-cnc/#overview
 
 ## First of all, major credit to Sorotec for creating the original macro file and serving as the basis for this undertaking!
 
