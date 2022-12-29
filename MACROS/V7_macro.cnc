@@ -375,8 +375,10 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 		;--------------------------------------------------
 		#4518 = 0 				; FLAG: Move back to operation starting point (1=YES, 0=NO)
 		IF [#3505 == 0] 			; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
-			DlgMsg "Measure Work Z 0" 
-		ENDIF	
+			DlgMsg "Measure Work Z 0"
+		ELSE					; measurement was initiated from handwheel, no UI dialog is shown
+			#5398 = 1;			; explicitly set OK button status to avoid unintended aborts
+		ENDIF
 		#3505 = 0				; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 		IF [[#5398 == 1] AND [#5397 == 0]]	; OK button pressed and RENDER Mode off !!
 			M5	; Spindle shutdown
