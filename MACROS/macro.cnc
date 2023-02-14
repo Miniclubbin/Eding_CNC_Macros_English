@@ -24,6 +24,8 @@
 ;Added FLAG #68 to track workpiece rotation compensation active
 ;Added workpiece rotation reset to homing sequence
 ;Replaced several error messages with normal terminal messages to speed up workflow
+;CHANGELOG FEB23:
+; Updated probing operations to include a rapid retract and slow probe to account for mechanical tool sensors
 ;***************************************************************************************
 
 ;Variables used
@@ -385,7 +387,8 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 			msg "Probing Z height"	
 			G38.2 G91 z-50 F[#4512] 	; Probe towards sensor until change in signal at probe feedrate
 			IF [#5067 == 1]			; IF sensor point activated
-			    G38.2 G91 z20 F[#4513]	; Slowly RETRACT until sensor deactivates
+			    G91 G0 Z2              ; back off trigger point
+			    G38.2 G91 z-5 F[#4513]	; Slowly probe down until sensor activates
 			    G90				; absolute position mode
 	 		    IF [#5067 == 1]		; IF sensor point activated
 					G0 Z#5063	; Rapid move to sensor activation point
@@ -445,7 +448,8 @@ Sub Z_PROBE_VCARVE ; Probe for Work Z-zero height
 			msg "Probing Z height"	
 			G38.2 G91 z-50 F[#4512] 	; Lower Z 50mm at [fast probe feed] until sensor triggered and stop
 			IF [#5067 == 1]			; sensor triggered, value recorded to [#5063]
-			    G38.2 G91 z20 F[#4513]	; Raise Z until sensor triggered at [slow probe feed] and stop
+			    G91 G0 Z2              ; back off trigger point
+			    G38.2 G91 z-5 F[#4513]	; Slowly probe down until sensor activates
 			    G90				; absolute position mode
 	 		    IF [#5067 == 1]		; sensor triggered, value recorded to [#5063]
 					G0 Z[#5063]	; Rapid Z move to [recorded trigger point]
@@ -796,8 +800,8 @@ Sub TOOL_SENSOR_CALIBRATE
 		msg "Calibrating Chuck Height in Machine"
         G38.2 G91 z-50 F[#4512] ; Fast Probe, stop when triggered
         IF [#5067 == 1]			; IF sensor point triggered
-            G91 Z2              ; back off trigger point 
-            G38.2 G91 z-5 F20   ; slow probe, stop when triggered
+            G91 G0 Z2              ; back off trigger point 
+            G38.2 G91 z-5 F[#4505]   ; slow probe, stop when triggered
             G90                 ; Absolute mode
             G53 G0 Z[#5053]	    ; Rapid move to Machine activation point
             msg "saving chuck height"
@@ -1010,7 +1014,8 @@ Sub TOOL_MEASURE_WEAR ; Tool Wear Detection
 		msg "probing"
 		G53 G38.2 Z[#4509] F[#4504]	; Probe Z to sensor height with Probe Feed #4504 
 		IF [#5067 == 1]	; Sensor is triggered
-			G91 G38.2 Z20 F[#4505]	; Reverse Z at [Probe feed] until trigger releases
+			G91 G0 Z2              ; back off trigger point
+			G38.2 G91 z-5 F[#4505]   ; slow probe, stop when triggered
 			G90	; Mode for absolute coordinates
 			; calculate tool length or throw error
 			IF [#5067 == 1]	; Sensor is triggered
