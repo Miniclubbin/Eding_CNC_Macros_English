@@ -1,5 +1,9 @@
 ;***************************************************************************************
 ; User Macros
+;
+; You can make these fit your software button layout by simply placing the desired subroutine under the corresponding "user_x" header. 
+; The below layout matches the "macro.cnc" file and icons contained in the icon folder
+;
 ;***************************************************************************************
 Sub user_1 ; Probe for Work Z-zero height
     GOSUB Z_PROBE	
@@ -58,22 +62,20 @@ Sub user_13 ; Move to WCS 0 Safe Z
    	GOSub WCS_0
 ENDSUB
 ;***************************************************************************************
-Sub user_14 ; Move to WCS 0 Z5
-   	GOSub WCS0_Z5
+Sub user_14 ; 3D probe
+   	GOSub 3D_menu
 ENDSUB
 ;***************************************************************************************
-Sub user_15 ; Move Z to 1
+Sub user_15 ; Set Z height to match material thickness
+   	GOSub PROBE_CUTOUT
+ENDSUB
+;***************************************************************************************
+Sub user_16 ; Move Z to 1
    	GOSub LOWER_Z
 ENDSUB
 ;***************************************************************************************
-Sub user_16 ; NONE
-   	msg "sub user_16"
-	DlgMsg "No function assigned"
-ENDSUB
-;***************************************************************************************
-Sub user_17 ; NONE
-   	msg "sub user_17"
-	DlgMsg "No function assigned"
+Sub user_17 ; Move to WCS 0 Z5
+   	GOSub WCS0_Z5
 ENDSUB
 ;***************************************************************************************
 Sub user_18 ; Tool Wear Detection
@@ -91,12 +93,43 @@ ENDSUB
 ;***************************************************************************************
 ; Handwheel Macros
 ;***************************************************************************************
+
+SUB xhc_start_pause
+	msg"Handwheel called start pause"
+ENDSUB
+
 SUB xhc_probe_z ; Probe Z height
+   	msg "Probing called from handwheel"
 	#3505 = 1	; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 	gosub Z_PROBE ; Probe Z height
 ENDSUB
 ;***************************************************************************************
-SUB xhc_macro_9 ;Tool Length Measurement
+SUB xhc_macro_1
+	msg"WCS XY0 set from handwheel"
+	G10L20P1X0Y0
+ENDSUB
+
+SUB xhc_macro_5
+	g28 ; Move to Machine 0 (Home)
+ENDSUB
+
+SUB xhc_macro_6
+	msg"Handwheel called move to TCP"
+	gosub TCP ;Move to Tool Change Position
+ENDSUB
+
+SUB xhc_macro_7
+	msg"Handwheel called Tool Change"
+	GOSUB TOOL_CHANGE_DLG
+ENDSUB
+
+SUB xhc_macro_8
+	msg"Handwheel called move to TMP"
+	gosub TMP ;Move to Tool Measurement Position
+ENDSUB
+
+SUB xhc_macro_9
 	msg"Tool Length Measurement"
 	gosub TOOL_MEASURE ;Tool Length Measurement
 ENDSUB
+
