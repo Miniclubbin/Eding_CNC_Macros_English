@@ -11,23 +11,21 @@
 + Author        DD/MM/YYYY   Changes
 + ========      ===========  ================================
 + DJ-Bino       23/12/2013   PP written
-+ DJ-Bino       23/12/2013   Arcs and circular moves
-+ DJ-Bino       23/12/2013   Revamped for EdingCNC(V4)
-+ DJ-Bino       06/07/2014   Spindle Speed 
-+ DJ-Bino       06/07/2014   Dwell time 
-+ DJ-Bino       17/05/2018   Tool name 
-+ DJ-Bino       14/09/2018   Helix moves G02/G03
-+ DJ-Bino       19/06/2020	 Safe Z height G53/G28
 + MiniClubbin   19/12/2022   Translated to English, trimmed "new segment" lines to speed up gcode
 + MiniClubbin   21/12/2022   REMOVED G54 from HEADER block to allow for multiple work offsets
 + MiniClubbin   21/12/2022   Commented out M07 commands
 + MiniClubbin   27/12/2022   Adjusted footer: reordered M5/M9, commented out G28
 + MiniClubbin   17/06/2022   Uncommented G28, M07, added MCSZ0 in footer
 + MiniClubbin   17/07/2023   Removed "Zero Position" block from header
++ MiniClubbin   17/08/2023   Added subroutine reference for auto probing CUTOUT
++ MiniClubbin   17/08/2023   Removed G43 Hxx from tool change
++ MiniClubbin   21/09/2023   Added M08 to programs to start chiller for spindle
++ Updated header to display first tool
+
 
 +=======================================================
 
-POST_NAME = "EDINGCNC_2_6 (*.nc)"
+POST_NAME = "EDINGCNC_2_8 (*.nc)"
 
 FILE_EXTENSION = "NC"
 
@@ -80,10 +78,10 @@ VAR DWELL_TIME = [DWELL|A|P|1.2]
 +---------------------------------------------------
 
 begin HEADER
-" (#4004=[ZLENGTH]) "
+" ( First Tool [T]: [TOOLNAME] ) "
+" #4004=[ZLENGTH] "
 " (goSub PROBE_CUTOUT_AUTO) "
 
-" ( First Tool [T]: [TOOLNAME] ) "
 "%"
 " G00 G21 G40 G49 "
 " G17 G80 G90 G94 G99 "
@@ -108,8 +106,9 @@ begin HEADER
 " G00 G53 Z0"
 " Msg[34] ***INSERT TOOL T[T] [TOOLNAME] [34] "
 " T[T] M06"
-" G43 H[T]"
+" (G43 H[T])"
 " (insert macros here) "
+" M08"
 " [S] M03"
 " Msg[34] T[T]: [TOOLNAME] [34] "
 " Msg[34] Toolpath: [TOOLPATH_NAME] [34] "
@@ -132,8 +131,9 @@ begin TOOLCHANGE
 " ( Previous Tool: T[TP] )"
 " Msg[34] ***INSERT TOOL T[T] [TOOLNAME] [34] "
 " T[T] M06"
-" G43 H[T]"
+" (G43 H[T])"
 " (insert macros here) "
+" M08"
 " [S] M03"
 " G00 [XH] [YH]"
 " G00 [ZH]"
@@ -261,6 +261,7 @@ begin CCW_HELICAL_ARC_PLUNGE_MOVE
 begin NEW_SEGMENT
 
 " ( Spindle Speed:     [S] RPM )"
+" M08"
 " [S] M03"
 " Msg[34] T[T]: [TOOLNAME] [34] "
 " Msg[34] Toolpath: [TOOLPATH_NAME] [34] "
