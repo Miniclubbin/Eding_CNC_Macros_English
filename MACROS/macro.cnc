@@ -1,5 +1,5 @@
 ;***************************************************************************************
-;2023JUL_V7.2
+;2023AUG_V7.3
 ;EDING CNC
 ;Based on SOROTEC MACRO CNC V2.1e.1 Without ATC
 ;Derived from SOROTEC
