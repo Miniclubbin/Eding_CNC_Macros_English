@@ -42,6 +42,7 @@
 ;Added 3d probe check to ZHC sequence
 ;Added logic to ZHC sequence to calculate probing distance based on length and number of scan points
 ;Added XY clearance distance and associated calculations in ZHCM
+;Added ZHC checks for probing operations
 ;***************************************************************************************
 
 ;Variables used
@@ -1604,7 +1605,6 @@ sub config
 	gosub CFG_TLOPROBE
 	GoSub CFG_ZPROBE
 	GoSub CFG_TOOLMEASUREPOS
-	GoSub CFG_SPINDLEWARM
 	GOSUB CFG_SPOILBOARD
 	;GoSub CFG_3DPROBE
 ENDSUB
@@ -1644,136 +1644,10 @@ sub CFG_TOOLMEASUREPOS
 	;#4525 Position Y after Tool Length Measurement
 	
 ENDSUB
-
+;***************************************************************************************
 SUB CFG_SPOILBOARD
 	Dlgmsg "Spoilboard Height" "spoilboard thickness: " 4002
 ENDSUB
-;***************************************************************************************
-;sub CFG_3DPROBE
-	;   #4551 set 0 point offset X+
-	;   #4552 set 0 point offset X-
-	;   #4553 set 0 point offset Y+
-	;   #4554 set 0 point offset Y-
-;	Dlgmsg "3D Finder Probe Offsets" "in direction X+" 4551 "in direction X-" 4552 "in direction Y+" 4553 "in direction Y-" 4554 
-;ENDSUB
-;***************************************************************************************
-sub CFG_SPINDLEWARM
-	;   #4532 RPM Step 1 for Spindle Warmup
-	;   #4533 Runtime Step 1 for Spindle Warmup
-	;   #4534 RPM Step 2 for Spindle Warmup
-	;   #4535 Runtime Step 2 for Spindle Warmup
-	;   #4536 RPM Step 3 for Spindle Warmup
-	;   #4537 Runtime Step 3 for Spindle Warmup
-	;   #4538 RPM Step 4 for Spindle Warmup
-	;   #4539 Runtime Step 4 for Spindle Warmup
-	; Dlgmsg "Spindle warmup settings" "RPM Step 1" 4532 "Runtime (sec.) Step 1" 4533 "RPM Step 2" 4534 "Runtime(sec.) Step 2" 4535 "RPM Step 3" 4536 "Runtime (sec.) Step 3" 4537 "RPM Step 4" 4538 "Runtime(sec.) Step 4" 4539
-	Dlgmsg "Spindle warmup settings" "RPM Step 1" 4532 "Runtime (sec.) Step 1" 4533
-ENDSUB
-
-
-;***************************************************************************************
-; UNUSED
-;***************************************************************************************
-;***************************************************************************************
-Sub PROBE_3D ;3D EdgeFinder Probing
-	;   #4550 3D-finder 0 point probing direction
-	;   #4551 3D-finder 0 point offset X+
-	;   #4552 3D-finder 0 point offset X-
-	;   #4553 3D-finder 0 point offset Y+
-	;   #4554 3D-finder 0 point offset Y-
-	Dlgmsg "Set corner edge probing direction: 1=X+ / 2=X- / 3=Y+  / 4=Y-" "Direction:" 4550 
-	IF [#4550 == 0]
-	ENDIF
-	;---- X-Plus-----------------------------------------------------------------------------------
-	IF [#4550 == 1]
-	    G91 G38.2 x20 F[#4504]
-    	G90
-    	IF [#5067 == 1]					; When Sensor is triggered
-       	    G91 G38.2 x-10 F[#4505]
-        	G90
-        		IF [#5067 == 1]				; When Sensor is triggered
-        			G10 L20 P[#5220] X#4551
-        			G91 G00 x-1
-        			G90
-		        ENDIF
-    	ELSE
-	    	DlgMsg "ERROR: No Sensor triggered - Measurement failed"
-    	ENDIF 
-	    #4550 = 0
-	ENDIF
-	;---- X-Minus-----------------------------------------------------------------------------------
-	IF [#4550 == 2]
-		G91 G38.2 x-20 F[#4504]
-		G90
-		IF [#5067 == 1]				; When Sensor is triggered
-	    	G91 G38.2 x10 F[#4505]
-			G90
-			IF [#5067 == 1]			; When Sensor is triggered
-				G10 L20 P[#5220] X#4552
-				G91 G00 x1 
-				G90
-			ENDIF
-		ELSE
-			DlgMsg "ERROR: No Sensor triggered - Measurement failed"
-		ENDIF 
-	    #4550 = 0
-	ENDIF
-	;---- Y-Plus-----------------------------------------------------------------------------------
-	IF [#4550 == 3]
-	    G91 G38.2 y20 F[#4504]
-    	G90
-		IF [#5067 == 1]				; When Sensor is triggered
-		    G91 G38.2 y-10 F[#4505]
-			G90
-			IF [#5067 == 1]			; When Sensor is triggered
-				G10 L20 P[#5220] y#4553
-				G91 G00 y-1 
-				G90
-			ENDIF
-		ELSE
-			DlgMsg "ERROR: No Sensor triggered - Measurement failed"
-		ENDIF 
-    	#4550 = 0
-	ENDIF 
-	;---- Y-Minus-----------------------------------------------------------------------------------
-	IF [#4550 == 4]
-    	G91 G38.2 y-20 F[#4504]
-    	G90
-    	IF [#5067 == 1]					; When Sensor is triggered
-    	    G91 G38.2 y10 F[#4505]
-    		G90
-    		IF [#5067 == 1]				; When Sensor is triggered
-    			G10 L20 P[#5220] y#4554
-    			G91 G00 y1 
-    			G90
-    		ENDIF
-    	ELSE
-    		DlgMsg "ERROR: No Sensor triggered - Measurement failed"
-    	ENDIF 
-    	#4550 = 0
-	ENDIF
-ENDSUB
-;***************************************************************************************
-Sub SPINDLE_WARMUP  ; Spindle Warmup 
-	DlgMsg "Start Spindle Warmup?"
-	IF [#5398 == 1]	 ;OK
-		G53 G00 Z0
-		msg "spindle step 1"
-		M03 S#4532 	;   #4532 RPM Step 1 for Spindle Warmup
-		G04 P#4533	;   #4533 Runtime Step 1 for Spindle Warmup
-		;msg "spindle step 2"
-		;M03 S#4534  ;   #4534 RPM Step 2 for Spindle Warmup
-		;G04 P#4535	;   #4535 Runtime Step 2 for Spindle Warmup
-		;msg "spindle step 3"
-		;M03 S#4536	;   #4536 RPM Step 3 for Spindle Warmup
-		;G04 P#4537	;   #4537 Runtime Step 3 for Spindle Warmup
-		;msg "spindle step 4"
-		;M03 S#4538	;   #4538 RPM Step 4 for Spindle Warmup
-		;G04 P#4539	;   #4539 Runtime Step 4 for Spindle Warmup
-		msg "spindle warmup complete"
-		M05
-	ENDIF
-ENDSUB	
 
 ;***************************************************************************************
 ; Available Operations:
@@ -1793,3 +1667,5 @@ ENDSUB
 	;#define NOT              !
 	;#define OR               ||
 	;#define SET_TO           =
+
+
