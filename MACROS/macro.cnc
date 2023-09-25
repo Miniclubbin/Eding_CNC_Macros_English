@@ -38,11 +38,16 @@
 ;Added check and skip function to sub change_tool for tools that are already inserted and measured
 ;Removed break check/tool_measure_wear subs and components
 ;Removed sub probe_z_vcarve due to non-use
+;Added dlgmsg to ZHC sequence to guard incorrect XYZ 0 setting
+;Added 3d probe check to ZHC sequence
+;Added logic to ZHC sequence to calculate probing distance based on length and number of scan points
+;Added XY clearance distance and associated calculations in ZHCM
 ;***************************************************************************************
 
 ;Variables used
 
-;ZHCM Grid Variables
+;ZHCM Scanning
+	;	Grid Variables
 	;	#4100 ;number x points
 	;	#4101 ;number y points
 	;	#4102 ;max z height
@@ -50,19 +55,26 @@
 	;	#4104 ;X grid point distance (mm)
 	;	#4105 ;Y grid point distance (mm)
 	;   #4106 ;probing feed
+
 	;	Scan parameters
-	;	#110  ;Actual nx
-	;	#111  ;Actual ny
-	;	#112  ;Missed measurements counter
-	;	#113  ;Number of points added
-	;	#114  ;0: odd x row, 1: even xrow
+	;	#4107  ;Actual nx
+	;	#4108  ;Actual ny
+	;	#4109  ;Missed measurements counter
+	;	#4110  ;Number of points added
+	;	#4111  ;0: odd x row, 1: even xrow
+	;   #4112  ;Length X
+	;   #4113  ;Length Y
+	;   #4114  ;Buffer distance X (from X0)
+	;   #4115  ;Buffer distance Y (from Y0)
+	;   #4116	;Current X0
+	;   #4117	;Current Y0
 ; Various
 	;	#68 FLAG workpiece rotation compensation active (resets on powerdown)
 	;	#185  - TEMP-Variable (Sensor error-status)
 	;   #3500 FLAG Initialized
 	;   #3501 FLAG Tool measure sequence completedd? 1=YES (resets on powerdown)
 	;   #3502 FLAG Only needed for calculation
-	;   #3503 FLAG Yes / No in Dialog
+	;   #3503 FLAG whether to proceed with tool change sequence
 	;   #3504 FLAG whether Break Check called by automatic 1=automatic
 	;   #3505 FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 	;   #3510 FLAG Tool Change initiated from GUI (1= initiated from GUI)
@@ -170,7 +182,8 @@
 	;   #5020 =  Tool Length Sensor Position Y-Axis
 	;   #5021 =  Measured tool length
 
-    ;   #5025 = Flag if ZHC was on
+    ;   #5025 = Tool Measure Flag if ZHC was on
+    ;   #5026 = Change Tool Flag if ZHC was on
 ; SYSTEM VARIABLES
 	;   #5053 Sensor-Activation point Z Pos (Machine) stored when sensor input triggered
 	;   #5061 Sensor-Activation point X Pos (Work)
@@ -222,7 +235,6 @@
 		IF [#4513 == 0]   	
 			#4513 =20  	; set [Z0 Slow probing feed] for exact measurement (mm/min)
 		ENDIF
-        #5025 = 0
 		msg "intialized"
 	ENDIF
 
@@ -254,7 +266,10 @@ sub home_all ; HOMING
 		dlgmsg "Turn off Z Height Compensation?"
 		IF [#5398 == 1] ; user pressed OK
 			ZHC off ; Turn off ZHC
+			G4 P0.5
+			;msg "ZHC off commanded by homing"
 			#5025 = 0 ; reset FLAG ZHC active
+			#5026 = 0 ; reset FLAG ZHC active
 		ENDIF
 	ENDIF
     m30
@@ -308,135 +323,196 @@ Sub zero_set_rotation
 ENDSUB
 ;***************************************************************************************
 ;***************************************************************************************
-sub zhcmgrid ; Surface Probing routine for eneven surface milling
+sub zhcmgrid ; Surface Probing routine for uneven surface milling
     ;#5151 is current ZHC status (1 = ON, 0 = OFF)
     ; 'ZHCINITEX' is used for different grid sizes across X and Y
 
+	;Check that tool is 3D probe
+	IF [#5008 < 98]	; 3D probe not inserted
+			msg "Canceled: Must use 3D probe for scanning"
+			M30
+	ENDIF
+
 	;scanning starts at Work x=0, y=0 and moves positive
 	IF [#4100 == 0]
-		#4100 = 10  ;number x points
-		#4101 = 5   ;number y points
+		#4112 = 100 ;Length X
+		#4113 = 50 ;Length Y
+		#4100 = 4  ;number x points
+		#4101 = 2   ;number y points
 		#4102 = 40  ;max z height
 		#4103 = 10  ;min z height
-		#4104 = 10.0 ;X grid point distance (mm)
-		#4105 = 10.0 ;Y grid point distance (mm)
+		#4104 = [[#4112]/[[#4100]-1]] ;X grid distance = X length div by npoints minus 1
+		#4105 = [[#4113]/[[#4101]-1]] ;Y grid distance = Y length div by npoints minus 1
         #4106 = 100 ;probing feed
+		#4114 = 0  ;Buffer distance X (from X0)
+		#4115 = 0  ;Buffer distance Y (from Y0)
 	ENDIF    
     ;reset scan parameters
-	#110 = 0    ;Actual nx
-	#111 = 0    ;Actual ny
-	#112 = 0    ;Missed measurements counter
-	#113 = 0    ;Number of points added
-	#114 = 1    ;0: odd x row, 1: even xrow
+	#4107 = 0    ;Actual nx
+	#4108 = 0    ;Actual ny
+	#4109 = 0    ;Missed measurements counter
+	#4110 = 0    ;Number of points added
+	#4111 = 1    ;0: odd x row, 1: even xrow
+	
 	;Dialog
-	dlgmsg "Surface Grid Probing" "Number of X points" 4100 "Number of Y points" 4101 "Clearance Z height (WCS)" 4102 "Z Probing (Absolut WCS)" 4103 "X Grid Size" 4104 "Y Grid Size" 4105 "Probe Feedrate" 4106
-   
-	IF [#5398 == 1] ; user pressed OK
-    	;Move to startpoint
-		G53 G0 z[#4506]
-		G90 ;absolute mode
-    	G0 X0 Y0 ;to start point
-		G0 z[#4102];to Z clearance height
-    	;ZHCINITEX <grid sizeX> <grid sizeY> <n of points in X> <n of points in Y>
-        ZHCINITEX [#4104] [#4105] [#4100] [#4101] ;define gridSize nx ny
-    	#111 = 0    ;current ny value
-    	WHILE [#111 < #4101] ;current Y counter is less than Y points
-        	IF [#114 == 1] ; row is even
-          		#110 = 0 ;reset counter
-          		WHILE [#110 < #4100]
-            		;Go up, goto xy, measure
-            		G0 z[#4102];to upper Z
-            		G0 x[#110 * #4104] y[#111 * #4105] ;to new scan point
-            		G38.2 F[#4106] z[#4103];probe down until touch   
-            		;Add point to internal table IF probe has touched
-            		IF [#5067 == 1]
-            			ZHCADDPOINT
-            			msg "nx="[#110 +1]" ny="[#111+1]" added"
-            			#113 = [#113+1]
-            		ELSE
-            			;ZHCADDPOINT
-             			msg "nx="[#110 +1]" ny="[#111+1]" not added"
-              			#112 = [#112+1]
-            		ENDIF
-            		#110 = [#110 + 1] ;next nx
-          		ENDWHILE
-          		#114=0
-        	ELSE
-          		;odd x row, go from nx to 0
-          		#110 = [#4100 - 1] ;start nx
-          		WHILE [#110 > -1]
-            		;Go up, goto xy, measure
-            		G0 z[#4102];to upper Z
-            		G0 x[#110 * #4104] y[#111 * #4105] ;to new scan point
-            		g38.2 F[#4106] z[#4103];probe down until touch  
-            		;Add point to internal table IF probe has touched
-            		IF [#5067 == 1]
-            			ZHCADDPOINT
-            			msg "nx="[#110 +1]" ny="[#111+1]" added"
-            			#113 = [#113+1]
-            		ELSE
-              			;ZHCADDPOINT
-              			msg "nx="[#110 +1]" ny="[#111+1]" not added"
-              			#112 = [#112+1]
-            		ENDIF
-            		#110 = [#110 - 1] ;next nx
-          		ENDWHILE
-          		#114=1
-        	ENDIF
-      		#111 = [#111 + 1] ;next ny
-    	ENDWHILE
-    	;G0 z[#4102];to upper Z
-		G53 G0 z[#4506] ;Go to Safe Z
-		G0 X0 Y0 ;to start point
-    	ZHCS zHeightCompTable.txt ;Save measured table
-    	msg "Done, "#113" points added, "#112" not added" 
-  	ELSE
-    	;user pressed cancel in dialog
-    	msg "Operation canceled"
-  	ENDIF
+	dlgmsg "Is XYZ0 set to lower left corner?"
+	IF [#5398 == 1]	; user pressed OK
+		dlgmsg "Surface Grid Probing" "X Length" 4112 "Number of X points (2 or more)" 4100 "Y Length" 4113 "Number of Y points (2 or more)" 4101 "Clearance Z height (WCS)" 4102 "Z Probe depth from 0 (WCS)" 4103 "X clearance distance from 0" 4114 "Y clearance distance from 0" 4115
+	   	IF [#5398 == 1]
+
+			;calculate grid size based on length and desired number of points
+
+			;NO BUFFER DISTANCE
+			;#4104 = [[#4112]/[[#4100]-1]] ;X grid distance = X length div by npoints minus 1
+			;#4105 = [[#4113]/[[#4101]-1]] ;Y grid distance = Y length div by npoints minus 1
+
+			;WITH BUFFER DISTANCE
+			#4104 = [[#4112-[2*[#4114]]]/[[#4100]-1]] ;X grid distance = X length - buffer distance div by npoints minus 1
+			#4105 = [[#4113-[2*[#4115]]]/[[#4101]-1]] ;Y grid distance = Y length - buffer distance div by npoints minus 1
+
+			msg "X grid size: " #4104 "  Y grid size: " #4105
+	    	
+			;Save current XY0 for recall later and reset XY0 to buffer distance
+			G53 G0 z[#4506] ; Z safe height
+			G90 ;absolute mode
+	    	G0 X0 Y0 ;to start point
+			#4116 = #5071 ;Save Current X Pos (Machine)
+			#4117 = #5072 ;Save Current Y Pos (Machine)
+			g4p0.2 ; pause .2 seconds
+			G0 X[#4114] Y[#4115] ;move to buffer start point
+			G10 L20 P[#5220] X0Y0	; Set current WCS offset [#5220] X and Y zero
+			g4p0.2 ; pause .2 seconds
+
+			;Probe ZHC
+			;Move to startpoint
+			G53 G0 z[#4506]
+			G90 ;absolute mode
+	    	G0 X0 Y0 ;to start point
+			G0 z[#4102];to Z clearance height
+	    	;ZHCINITEX <grid sizeX> <grid sizeY> <n of points in X> <n of points in Y>
+	        ZHCINITEX [#4104] [#4105] [#4100] [#4101] ;define gridSize nx ny
+	    	#4108 = 0    ;current ny value
+	    	WHILE [#4108 < #4101] ;current Y counter is less than Y points
+	        	IF [#4111 == 1] ; row is even
+	          		#4107 = 0 ;reset counter
+	          		WHILE [#4107 < #4100]
+	            		;Go up, goto xy, measure
+	            		G0 z[#4102];to upper Z
+	            		G0 x[#4107 * #4104] y[#4108 * #4105] ;to new scan point [current n * grid distance]
+	            		G38.2 F[#4106] z[#4103];probe down until touch   
+	            		;Add point to internal table IF probe has touched
+	            		IF [#5067 == 1]
+	            			ZHCADDPOINT
+	            			msg "nx="[#4107 +1]" ny="[#4108+1]" added"
+	            			#4110 = [#4110+1]
+	            		ELSE
+	            			;ZHCADDPOINT
+   		          			msg "nx="[#4107 +1]" ny="[#4108+1]" not added"
+    	          			#4109 = [#4109+1]
+    	        		ENDIF
+    	        		#4107 = [#4107 + 1] ;next nx
+    	      		ENDWHILE
+    	      		#4111=0
+    	    	ELSE
+    	      		;odd x row, go from nx to 0
+    	      		#4107 = [#4100 - 1] ;start nx
+    	      		WHILE [#4107 > -1]
+    	        		;Go up, goto xy, measure
+    	        		G0 z[#4102];to upper Z
+    	        		G0 x[#4107 * #4104] y[#4108 * #4105] ;to new scan point [current n * grid distance]
+    	        		g38.2 F[#4106] z[#4103];probe down until touch  
+    	        		;Add point to internal table IF probe has touched
+    	        		IF [#5067 == 1]
+    	        			ZHCADDPOINT
+    	        			msg "nx="[#4107 +1]" ny="[#4108+1]" added"
+    	        			#4110 = [#4110+1]
+    	        		ELSE
+    	          			;ZHCADDPOINT
+    	          			msg "nx="[#4107 +1]" ny="[#4108+1]" not added"
+    	          			#4109 = [#4109+1]
+    	        		ENDIF
+    	        		#4107 = [#4107 - 1] ;next nx
+    	      		ENDWHILE
+    	      		#4111=1
+    	    	ENDIF
+    	  		#4108 = [#4108 + 1] ;next ny
+    		ENDWHILE
+    		;G0 z[#4102];to upper Z
+			G53 G0 z[#4506] ;Go to Safe Z
+			G53 G0 X[#4116] Y[#4117] ;move to original XY0
+			G10 L20 P[#5220] X0Y0 ; Reset current WCS offset X and Y zero
+			G90
+    		ZHCS zHeightCompTable.txt ;Save measured table
+    		msg "Done, "#4110" points added, "#4109" not added"
+			ZHCcheck 20 ;list ZHC statistics
+		ELSE				;user pressed cancel in dialog
+			msg "Operation canceled"
+			m30 ;end sequence
+	  	ENDIF
+	ELSE
+		msg "Canceled: Restart when XYZ 0 is set to lower left corner"
+		m30 ;end sequence
+	ENDIF
 ENDSUB
+
+SUB ZHC_CHECK
+	IF [[#5151 == 0] AND [#5397 == 0]]	; ZHC off and RENDER Mode off
+		dlgmsg "Turn on ZHC and set Z0?"
+		IF [#5398 == 1]	; OK-button
+			ZHC on ; Turn on ZHC
+			G4 P0.5
+			goSub Z_PROBE
+			dlgmsg "Remove probe and continue"
+			IF [#5398 == -1]	; Cancel-button
+				ZHC off
+				msg "Canceled job and reset ZHC"
+				M30
+			ENDIF
+		ELSE
+			msg "ZHC skipped"
+		ENDIF
+	ENDIF
+ENDSUB
+
 
 ;***************************************************************************************
 ; Machine Macros
 ;***************************************************************************************
 sub SENSOR_CHECK ; Check Tool Length Sensor Status before measurement
-	IF [#4400 == 0]	; [Tool Length Sensor-Type] is 0 (0= Normally Open)
-	     #185 = 1	; set error-status (1= open)
-	ELSE		; [Tool Length Sensor-Type] is 1 (0= Normally Closed)
-	    #185 = 0	; set error-status (0= closed)
+	IF [#4400 == 0]	; [Tool Length Sensor-Type] is 0 (Normally Open)
+	     #185 = 1	; set flag error-status (1= error if input closed)
+	ELSE		; [Tool Length Sensor-Type] is 1 (Normally Closed)
+	    #185 = 0	; set flag error-status (0= error if input open)
 	ENDIF
 	; checking tool sensor status"
-	IF [#5068 == #185]	; Sensor status = error status (0=closed, 1=open)
-		dlgmsg "Verify tool sensor is functional"
+	IF [[#5068 == #185]	AND [#5380 == 0]]; Sensor status = error status and not in simulation mode
+		dlgmsg "Verify probe sensors"
 		IF [#5398 == 1]	; OK-button
 		    IF [#5068 == #185]	; Sensor status = error status (0=closed, 1=open)
 				errmsg "Tool sensor error, verify and try again."
 			ELSE
-				msg "tool sensor OK"
+				msg "probe sensor OK"
 		    ENDIF
 		ELSE
 		    msg "Operation canceled"
-			
+			m30
 		ENDIF	
 	ELSE
-		msg "tool sensor OK"
+		msg "probe sensor OK"
 	ENDIF
 ENDSUB
 ;***************************************************************************************
 Sub Z_PROBE ; Probe for Work Z-zero height
-	; #185  - TEMP-Variable (Sensor error-status)
 
 	;--------------------------------------------------
 	;3DFinder - Cancel Measurement
 	;--------------------------------------------------
-	;*********UNCOMMENT IF USING 3D PROBE*************
-	;
-	IF [#5008 > 97]		; Tool 98 and 99 are 3D-button - no Tool Length Measurement
-		msg "Tool is 3D-button -> Tool Length Measurement not executed"
-		M30			; END of sequence
-	ENDIF
+	;IF [#5008 > 97]		; Tool 98 and 99 are 3D-probe - no Tool Length Measurement
+	;	msg "Tool is 3D-probe -> Tool Length Measurement not executed"
+	;	M30	; END of sequence and reset job
+	;ENDIF
 
-	IF [[#3501 == 1] or [#4520 < 2] or [#3505 == 1]]	; [Tool already Measured] or [Tool Change Mode] is 0 or 1 or [called from handwheel]
+	IF [[#3501 == 1] or [#4520 < 2] or [#3505 == 1] or [#5008 > 97]]	; do not measure tool if: [Tool already Measured] or [Tool Change Mode] is 0 or 1 or [called from handwheel] or [current tool] is 3d probe
 		; Sensor Status check -----------------------------
 		GOSUB SENSOR_CHECK
 		;--------------------------------------------------
@@ -444,23 +520,28 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 		IF [#3505 == 0] 			; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
 			DlgMsg "Measure Work Z 0" 
 		ELSE
-			msg "Called from Handwheel"
+			msg "Zprobe called from Handwheel"
 			#5398 = 1
 		ENDIF	
-		#3505 = 0				; FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
+		#3505 = 0 ; reset FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
+
 		IF [[#5398 == 1] AND [#5397 == 0]]	; OK button pressed and RENDER Mode off !!
-			M5	; Spindle shutdown
-			msg "Probing Z height"	
-			G38.2 G91 z-50 F[#4512] 	; Probe towards sensor until change in signal at probe feedrate
+			M9 ; turn off coolant
+	        M5 ; turn off spindle
+			msg "Probing Z height"
+			G38.2 G91 z-50 F[#4512] 	; Probe towards sensor at probe feedrate
 			IF [#5067 == 1]			; IF sensor point activated
 			    G91 G0 Z2              ; back off trigger point 
 				G38.2 G91 z-5 F[#4513]	; Slowly probe down until sensor activates
 			    G90				; absolute position mode
 	 		    IF [#5067 == 1]		; IF sensor point activated
 					G0 Z#5063	; Rapid move to sensor activation point
-					; setting Z offset"
-					G92 Z[#4510] 	; Overwrite current Z height with probe height
-					G0 Z[#4510 + 15] ; Rapid retract to 5mm above probe height
+					IF [#5008 > 97]		; Tool 98 and 99 are 3D-probe
+						G10 L20 P[#5220] Z0 	; Overwrite current Z height to 0
+					ELSE
+						G10 L20 P[#5220] Z[#4510] 	; Overwrite current Z height with probe height
+					ENDIF
+					G53 G0 z[#4506]	; Move to Z Safe Height [Machine] 
 					msg"Z-0 probe complete"
 			    ELSE
 					G90 
@@ -477,6 +558,7 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 			ENDIF
 		ELSE
 			msg "z_probe canceled"
+			M30
 		ENDIF   	
 	ELSE
 		#3505 = 0	; reset FLAG whether Tool Length Measurement called from handwheel 1=Handwheel
@@ -486,23 +568,159 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 			#4515 = #5072		; set Return point for Y Pos to current Machine position
 			#4516 = #5073		; set Return point for Z Pos to current Machine position
 			#4518 = 1		; FLAG: set Move back to operation starting point (1=YES, 0=NO)
-			msg "tool_measure called from Z_probe"
+			msg "tool measurement called from Z_probe"
 			GoSub TOOL_MEASURE
 			msg "tool measured, returning to Z_probe"
 			gosub Z_PROBE
 		ELSE
 			msg "z_probe canceled"
+			M30
 		ENDIF
 	ENDIF
+ENDSUB
+;***************************************************************************************
+sub change_tool ; TOOL CHANGE SEQUENCE
+
+; skip tool change if 70-series tool, proceed to set Z0 for material thickness
+IF [[#5011 >= 70] AND [#5011 <= 79]] ;new tool is 70-series auto cutout
+		goSub PROBE_CUTOUT_AUTO	
+		M6 T[#5011]				; New Tool Number set
+		msg "Tool " #5008" changed to Tool " #5011
+ELSE		
+	TCAGuard off ;allow machine into tool change area as defined in TCA setup
+    
+	;Check ZHeight comp and switch off when on, remember the state in #5025 (tool measure) or #5026 (tool change), #5151 indicates that ZHeight comp is on    
+    #5026 = #5151 ;set temp flag for ZHC status
+    if [#5026 == 1]
+        ZHC off
+		;msg "ZHC off commanded by tool change"
+		G4 P0.5
+    endif
+
+	msg "Tool Change initiated: " %d
+	msg "Initial Tool Measurement Status: " #3501
+    M9 ; turn off coolant
+	M5 ; turn off spindle
+    #5015 = 0 ; reset FLAG: Tool Change not yet executed
+
+    IF [#5397 == 0]	; RENDER Mode off (0= off)
+        ; Tool Change Type  0= Ignore, 1= Skip measurement, 2= Measure		
+		
+		; 0 = Ignore Toolchange
+		IF [[#4520] == 0] 
+			msg "tool change type 0 ignored"
+		ENDIF
+
+		; Toolchange not ignored (type 1 or 2)
+		IF [[#4520] > 0] 
+			#3503 = 1 ;set FLAG to proceed with tool change sequence
+            
+			;IF new tool matches Current Tool
+            IF [[#5011] == [#5008]] 
+				; measurement logic for tool already inserted
+                IF [#4520 == 2] ; Tool change type is measurement
+                    #3503 = 0 ;reset FLAG whether to proceed with tool change sequence because tool is already inserted
+                    IF [#3501 == 0] ; measurement not yet completed
+                        Dlgmsg "Measure tool"
+                        IF [#5398 == 1] ;OK pressed
+                            gosub TOOL_MEASURE
+                        ELSE 
+                            msg "skipped measuring current tool"
+							#3501 = 0 ;reset measurement flag for safety
+                        ENDIF
+					ELSE
+						msg "tool inserted and measured"
+						;#3501 = 0 ;reset measurement flag for safety
+                    ENDIF
+				ELSE ; Tool change type 1 skips measurement
+    				Dlgmsg "Tool is already inserted. Proceed with change sequence?"
+    				IF [#5398 == 1] ;OK pressed
+    					#3503 = 1 ;set FLAG whether to proceed with tool change sequence
+    				ELSE
+    					#3503 = 0 ;reset FLAG whether to proceed with tool change sequence
+    					msg "skipped tool change sequence"
+    				ENDIF
+    			ENDIF
+			ENDIF
+
+			;Proceed with tool change
+            IF [#3503 == 1] ;FLAG whether to proceed with tool change sequence
+				; PLACEHOLDER save current position
+				;IF [#4519 == 5] ; move to: 5= previous position
+				;	#4514 = #5071	; set Return point for X Pos to current Machine position
+				;	#4515 = #5072	; set Return point for Y Pos to current Machine position
+				;ENDIF
+
+				; move to TCP
+                msg "moving to tool change position"
+				G53 G0 Z[#4523]	; Safe Height
+				G53 G0 X[#4521] Y[#4522] ; Tool Change Position X Y
+				
+				; Perform tool change
+				#5027 = #[5400 + #5011] ; New tool length
+				#5028 = #[5500 + #5011] ; New tool diameter
+                Dlgmsg "Please change tool" "Current Tool:" 5008 "New Tool:" 5011
+				IF [#5398 == 1] ;OK pressed
+					#[5400 + #5011] = #5027 ; update Length if manually changed in dialog
+					#[5500 + #5011] = #5028 ; update Diameter if manually changed in dialog
+					IF [#5011 > 99] ; tool beyond catalog
+						Dlgmsg "Tool Number Must be Number 1-99" "New Tool:" 5011
+						IF [#5398 == 1] ;OK pressed
+							msg "restarting sequence"
+							gosub change_tool
+						ELSE
+							#5015 = 0 ; Tool Change executed 1=Yes
+							errmsg "Tool Change failed"
+						ENDIF
+					ENDIF
+					;msg "tool changed"
+					#5015 = 1 ; Tool Change executed 1=Yes
+				ELSE
+				   	msg "Tool Change canceled" 
+					#5015 = 0
+				ENDIF
+			ENDIF
+		ENDIF
+
+		; Tool Change-Process was executed
+		IF [[#5015] == 1]    
+			M6 T[#5011]				; New Tool Number set
+			msg "Tool " #5008" changed to Tool " #5011
+
+			; Measure tool
+            IF [#4520 == 2] ; Tool change type is measurement 
+			    ;msg "tool_measure called from tool_change"
+				gosub TOOL_MEASURE	; Tool Length Measurement called  [WARNING - Must occur after M6 T.. command is called]
+			ENDIF
+			#5015 = 0 ; reset Tool Change executed flag
+		ENDIF
+    ENDIF 
+
+	TCAGuard on ;disallow machine into tool change area as defined in TCA setup
+	;msg "TCAGuard on Tool Change"
+
+    ;Check if ZHeight comp was on before and switch ON again if it was.
+    if [[#5026 == 1] OR [#5025 == 1]]
+        ZHC on
+		G4 P0.5
+		#5026 = 0
+		;msg "ZHC on commanded by Tool Change"
+    ENDIF
+	S0
+	msg "Tool Change completed: " %d
+	msg "Final Tool Measurement Status: " #3501
+ENDIF
+
 ENDSUB
 ;***************************************************************************************
 Sub TOOL_MEASURE ; Tool Length Measurement
 
 	;--------------------------------------------------
 	;3DFinder - Cancel Tool Length Measurement
-	IF [#5008 > 97]		; Tool 98 and 99 are 3D-button - no Tool Length Measurement
-		msg "Tool is 3D-button -> Tool Length Measurement not executed"
-		M30			; END of sequence
+	IF [#5008 > 97]		; Tool 98 and 99 are 3D-probe - no Tool Length Measurement
+		S0
+		msg "Tool is 3D-probe -> Tool Length Measurement not executed"
+    	M30	; END of sequence and reset job
 	ENDIF
 	;--------------------------------------------------
 
@@ -519,11 +737,15 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 	#5019 = [#4507]	; set variable to Tool Length Sensor X-Axis Position
 	#5020 = [#4508]	; set variable to Tool Length Sensor Y-Axis Position
 	#5021 = 0 	; Reset measured tool length variable
-    dlgmsg "How long is the new tool" "Est. Tool Length:" 5017 ; Enter estimated tool length
+	#5027 = #[5400 + #5008] ; current tool length
+	#5028 = #[5500 + #5008] ; current tool diameter
+	dlgmsg "How long is the new tool" "Recorded Tool Length:" 5027 "Recorded Tool Diameter" 5028
     
 	; confirm sequence and check entered values for errors
 	IF [[#5398 == 1] AND [#5397 == 0]]	; OK button was pressed and RENDER Mode is off
-
+		#[5400 + #5008] = #5027 ; update length if manually changed in dialog
+		#[5500 + #5008] = #5028 ; update diameter if manually changed in dialog
+		
 		; if either of these conditions fail
         IF [ [#5017 <= 0] OR [ [#4509 + #5017 + 10] > [#4506] ] ] ;Value is negative OR sensor height + tool + 10 is longer than z safe height 
             dlgmsg "Length must be between 0 and MAX, ok to restart"
@@ -537,10 +759,14 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 		ENDIF		
 
 		TCAGuard off ;allow machine into tool change area as defined in TCA setup
-    	;Check ZHeight comp and switch off when on, remember the state in #5025, #5151 indicates that ZHeight comp is on    
-    	#5025 = #5151
+
+    	;Check ZHeight comp and switch off when on, remember the state in #5025 or #5026, #5151 indicates that ZHeight comp is on    
+    	#5025 = #5151 ;set temp flag for ZHC status
+		G4 P0.5
     	if [#5025 == 1]
         	ZHC off
+			G4 P0.5
+			;msg "ZHC off commanded by tool measurement"
     	endif
 
 		; move to tool sensor position"
@@ -548,12 +774,19 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 		M5 ; turn off spindle
 		G53 G0 z[#4506]			; Move to Z Safe Height [Machine] 
 		G53 G0 x[#5019] y[#5020]		; Move to Tool Length Sensor Position
-		G53 G0 z[#4509 + #5017 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [estimated Tool Length] + 30 = MCS Z distance
-		G38.2 G91 Z-20 F800 	; slow Z minus 20 with probe active in case of crash
-	    IF [#5067 == 1]	AND [#5380 == 0] ; if sensor triggered and simulation mode is 0
-		    G90						; G90 -> Absolute distance mode
-			; convert to errmsg after testing
-		    msg "Measurement aborted! -> Unexpected sensor trigger"
+		G53 G0 z[#4509 + #5027 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [recorded Tool Length] + 30 = MCS Z distance
+		G38.2 G91 Z-20 F500 	; slow Z minus 20 with probe active in case of crash
+	    IF [[#5067 == 1]	AND [#5380 == 0]] ; if sensor triggered and simulation mode is 0
+		    G91 G0 Z5
+			G90						; G90 -> Absolute distance mode
+			;Check if ZHeight comp was on before and switch ON again if it was.
+    		if [[#5026 == 1] OR [#5025 == 1]]
+		        ZHC on
+				G4 P0.5
+				;msg "ZHC on commanded by tool measurement"
+  			ENDIF
+			TCAGuard on ;disallow machine into tool change area as defined in TCA setup
+		    errmsg "Measurement aborted! -> Unexpected sensor trigger"
         ENDIF
         
         G90
@@ -569,7 +802,10 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 			IF [#5067 == 1]				; Sensor is triggered
 				#5021 = [#5053 - #4509]	; Recorded tool length = sensor point - chuck height
 				G53 G0 z[#4506]	; Z Safe Height [Machine]
-				msg "Tool Length = " #5021
+				;msg "Tool Length = " #5021
+				;Update tool length in tool table
+				#[5400 + #5016] = #5021	;[tool table + current tool number] = measured length
+				msg "Tool Length = " #5021" written to table line "#5016
 				
                 ; calculate Z offset for next tool or use new measurement for first tool
 				IF [#3501 == 1] 		; Tool measure sequence completed? 1=YES
@@ -577,8 +813,8 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 					#4502 = [#4501]		; save current tool length
 					#4501 = [#5021]		; save new tool length
 					#3502 = [#4501 - #4502]	; Record tool length difference (offset)
-					G92 Z[#5003 - #3502]	; set Z-0 offset [Current Z Work]-[measured difference]
-					msg "Z Offset: " [#5003 - #3502]
+					G10 L20 P[#5220] Z[#5003 - #3502]	; set Z-0 offset [Current Z Work]-[measured difference]
+					msg "Z Offset: " #3502
 
 				; first tool, record length
 				ELSE
@@ -640,117 +876,19 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 		ENDIF
     ELSE
 		msg "Tool Change aborted"
+		#3501 = 0
 	ENDIF
 
 	TCAGuard on ;disallow machine into tool change area as defined in TCA setup
+	;msg "TCAGuard on Measurement"
+
     ;Check if ZHeight comp was on before and switch ON again if it was.
-    if [#5025 == 1]
+    if [[#5026 == 1] OR [#5025 == 1]]
         ZHC on
+		G4 P0.5
+		#5025 = 0
+		;msg "ZHC on commanded by tool measurement"
     ENDIF
-ENDSUB
-;***************************************************************************************
-sub change_tool ; TOOL CHANGE SEQUENCE
-	
-	TCAGuard off ;allow machine into tool change area as defined in TCA setup
-    ;Check ZHeight comp and switch off when on, remember the state in #5025, #5151 indicates that ZHeight comp is on    
-    #5025 = #5151
-    if [#5025 == 1]
-        ZHC off
-    endif
-
-	msg "Tool Change initiated"
-    M9 ; turn off coolant
-	M5 ; turn off spindle
-    #5015 = 0	; set FLAG: Tool Change not yet executed
-
-    IF [#5397 == 0]	; RENDER Mode off (0= off)
-        ; Tool Change Type  0= Ignore, 1= Skip measurement, 2= Measure		
-		IF [[#4520] == 0] ; 0 = Ignore Toolchange
-			msg "tool change type 0 ignored"
-		ENDIF
-			
-		IF [[#4520] > 0] ; Toolchange not ignored
-			#3503 = 1
-            
-			;IF new tool matches Current Tool
-            IF [[#5011] == [#5008]] 
-                IF [#4520 == 2] ; Tool change type is measurement
-                    #3503 = 0
-                    IF [#3501 == 0] ; measurement not yet completed
-                        Dlgmsg "Measure tool"
-                        IF [#5398 == 1] ;OK pressed
-                            gosub TOOL_MEASURE
-                        ELSE 
-                            msg "skipped measuring current tool"
-							#3501 = 0 ;reset measurement flag for safety
-                        ENDIF
-					ELSE
-						msg "tool inserted and measured"
-						#3501 = 0 ;reset measurement flag for safety
-                    ENDIF
-				ELSE ; Tool change type skips measurement
-    				Dlgmsg "Tool is already inserted. Proceed with change sequence?"
-    				IF [#5398 == 1] ;OK pressed
-    					#3503 = 1
-    				ELSE
-    					#3503 = 0
-    					msg "skipped tool change sequence"
-    				ENDIF
-    			ENDIF
-			ENDIF
-			;Proceed with tool change
-            IF [#3503 == 1] 
-				;save current position
-				;IF [#4519 == 5] ; move to: 5= previous position
-				;	#4514 = #5071	; set Return point for X Pos to current Machine position
-				;	#4515 = #5072	; set Return point for Y Pos to current Machine position
-				;ENDIF
-
-				; move to TCP
-                msg "moving to tool change position"
-				G53 G0 Z[#4523]				; Safe Height
-				G53 G0 X[#4521] Y[#4522]		; Tool Change Position X Y
-				; Perform tool change
-                Dlgmsg "Please change tool" "Current Tool:" 5008 "New Tool:" 5011
-				IF [#5398 == 1] ;OK pressed
-					IF [#5011 > 99]
-						Dlgmsg "Tool Number Incorrect: Please enter Tool Number 1-99" "New Tool:" 5011
-						IF [#5398 == 1] ;OK pressed
-							msg "restarting sequence"
-							gosub change_tool
-						ELSE
-							errmsg "Tool Change failed"
-						ENDIF
-					ENDIF
-					msg "tool changed"
-					#5015 = 1			; Tool Change executed 1=Yes
-				ELSE
-				   	msg "Tool Change canceled" 
-					#5015 = 0
-				ENDIF
-			ENDIF
-		ENDIF
-
-		; Tool Change-Process was executed
-		IF [[#5015] == 1]    
-			M6 T[#5011]				; New Tool Number set
-			msg "Tool " #5008" changed to Tool " #5011
-
-			; Measure tool
-            IF [#4520 == 2] 		; Tool Change Type  0= Ignore, 1 = Return to WCS 0, 2= Measure 
-			    msg "tool_measure called from tool_change"
-				gosub TOOL_MEASURE		; Tool Length Measurement called  [WARNING - Must occur after M6 T.. command is called]
-			ENDIF
-			#5015 = 0 ; reset Tool Change executed flag
-		ENDIF
-    ENDIF 
-
-	TCAGuard on ;disallow machine into tool change area as defined in TCA setup
-    ;Check if ZHeight comp was on before and switch ON again if it was.
-    if [#5025 == 1]
-        ZHC on
-    ENDIF
-
 ENDSUB
 ;***************************************************************************************
 Sub TOOL_CHANGE_DLG  ; Call Tool Change Sequence
@@ -759,33 +897,32 @@ Sub TOOL_CHANGE_DLG  ; Call Tool Change Sequence
     IF [#5398 == 1] ;OK
 		IF [#5011 > 99] 
 		    Dlgmsg "Tool Number Incorrect: only 1-99"
-		    #5011 = #5008				; [New Tool Number] reset to [current tool number]
+		    #5011 = #5008 ; [New Tool Number] reset to [current tool number]
 			M30
 		ELSE
-	    	#3510 = 1					; set FLAG Tool Change initiated from GUI (1= initiated from GUI)
-	    	msg "change_tool called from dialog"
+	    	#3510 = 1 ; set FLAG Tool Change initiated from GUI (1= initiated from GUI)
+	    	msg "change_tool called from GUI"
 			gosub change_tool
-		    #3510 = 0					; Reset FLAG Tool Change initiated from GUI
+		    #3510 = 0 ; Reset FLAG Tool Change initiated from GUI
 		ENDIF
     ENDIF
 ENDSUB
 ;***************************************************************************************
 Sub TOOL_NBR_UPDATE  ; Update Tool Number
     #5011 = [#5008]
-    Dlgmsg "!!! Tool Update !!!" "Current Tool Number" 5008" New Tool Number" 5011
+    Dlgmsg "!!! Tool Update !!!" "New Tool Number" 5011 "Current Tool Number" 5008 
     IF [#5011 > 99] 
 		Dlgmsg "Tool Number Incorrect: only 1-99"
 		#5011 = #5008				; [New Tool Number] reset to [current tool number]
 		M30
     ELSE
-		#5015 = 1				; Was tool successfully updated 1=Yes
+		#5015 = 1 ; Was tool successfully updated 1=Yes
 		IF [[#5011] > 0] 
 		    M6 T[#5011]
 			msg "Tool # updated to T" #5011
 		ENDIF
     ENDIF
 ENDSUB
-
 ;***************************************************************************************
 Sub TOOL_SENSOR_CALIBRATE
     ; Sensor Status check -----------------------------
@@ -793,10 +930,12 @@ Sub TOOL_SENSOR_CALIBRATE
     ;--------------------------------------------------
   	
 	TCAGuard off ;allow machine into tool change area as defined in TCA setup
-    ;Check ZHeight comp and switch off when on, remember the state in #5025, #5151 indicates that ZHeight comp is on    
-    #5025 = #5151
+    ;Check ZHeight comp and switch off when on, remember the state in #5025 or #5026, #5151 indicates that ZHeight comp is on    
+    #5025 = #5151 ;set temp flag for ZHC status
     if [#5025 == 1]
         ZHC off
+		;msg "ZHC off commanded by tool sensor cal"
+		G4 P0.5
     endif
 	
 	; Turn off spindle and coolant
@@ -842,6 +981,9 @@ Sub TOOL_SENSOR_CALIBRATE
     ;Check if ZHeight comp was on before and switch ON again if it was.
     if [#5025 == 1]
         ZHC on
+		G4 P0.5
+		;msg "ZHC on commanded by tool sensor cal"
+		#5025 = 0
     ENDIF
 
 endSub
@@ -979,26 +1121,32 @@ Sub PROBE_CUTOUT
 	; #4004 - material thickness as programmed in GCODE
 	
 	TCAGuard off ;allow machine into tool change area as defined in TCA setup
-    ;Check ZHeight comp and switch off when on, remember the state in #5025, #5151 indicates that ZHeight comp is on    
-    #5025 = #5151
-    if [#5025 == 1]
-        ZHC off
-    endif
+
+    ZHC off
+	G4 P0.5
 
 	M9 ; turn off coolant
 	M5 ; turn off spindle	
 	GOSUB SENSOR_CHECK
-   	MSG "CURRENT SPOILBOARD HEIGHT: " [#4002]
-	dlgmsg "set cutout z0 height" "Spoilboard Thickness" 4002 "Material thickness" 4004 "Est. Tool Length:" 5017
+   	#5027 = #[5400 + #5008] ; current tool length
+	#5028 = #[5500 + #5008] ; current tool diameter
+	MSG "CURRENT SPOILBOARD HEIGHT: " [#4002]
+	
+	
+	dlgmsg "set cutout z0 height" "Spoilboard Thickness" 4002 "Material thickness" 4004 "Tool Length:" 5027 "Tool Diameter: " 5028
     
 	IF [[#5398 == 1] AND [#5397 == 0]]	; OK button was pressed and RENDER Mode is off
-     	IF [ [#5017 <= 0] OR [ [#4509 + #5017 + 10] > [#4506] ] ] ;Value is negative OR tool too long for sensor height
-            dlgmsg "Length must be between 0 and MAX, ok to restart"
+     	IF [ [#5027 <= 0] OR [ [#4509 + #5027 + 10] > [#4506] ] ] ;Estimated tool length is negative OR too long for sensor height
+            dlgmsg "Length must be between 0 and MAX, ok to restart" "Tool Length: " 5027 "Tool Diameter: " 5028
             IF [#5398 == 1] ;OK pressed
+				#[5400 + #5008] = #5027 ; update length if manually changed in dialog
+				#[5500 + #5008] = #5028 ; update diameter if manually changed in dialog
 				msg "restarting measurement"
 				gosub PROBE_CUTOUT
 			ELSE
 				msg "Cutout probing FAILED"
+				#5027 = 0 ; reset tool length
+				#5028 = 0 ; reset tool diameter
 				M30 ; cancel sequence
 		    ENDIF
 		ENDIF
@@ -1009,8 +1157,21 @@ Sub PROBE_CUTOUT
 		G90
 		G53 G0 Z[#4506] ; Move to Z Safe
 		G53 G0 X[#4507] Y[#4508] ; Move to Tool Length Sensor Position
-		G53 G0 z[#4509 + #5017 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [estimated Tool Length] + 30 = MCS Z distance
-		G91 G1 Z-20 F800 	; slow Z minus 20
+		G53 G0 z[#4509 + #5027 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [recorded Tool Length] + 30 = MCS Z distance
+		G38.2 G91 Z-20 F500 	; slow Z minus 20 with probe active in case of crash
+	    IF [[#5067 == 1]	AND [#5380 == 0]] ; if sensor triggered and simulation mode is 0
+		    G91 G0 Z5
+			G90						; G90 -> Absolute distance mode
+			;Check if ZHeight comp was on before and switch ON again if it was.
+    		if [[#5026 == 1] OR [#5025 == 1]]
+		        ZHC on
+				G4 P0.5
+				;msg "ZHC on commanded by tool measurement"
+  			ENDIF
+			TCAGuard on ;disallow machine into tool change area as defined in TCA setup
+		    errmsg "Measurement aborted! -> Unexpected sensor trigger"
+        ENDIF
+
 		G90
 		msg "Probing Table Z height"	
 		G53 G38.2 Z[#4509] F[#4504]	; Probe Z to sensor height with Probe Feed #4504
@@ -1021,8 +1182,8 @@ Sub PROBE_CUTOUT
 		    IF [#5067 == 1]		; IF sensor point activated
 				G0 Z#5063	; Rapid move to sensor activation point
 				; setting spoilboard Z offset + material thickness
-				G92 Z[#4500 - #4002 - #4004] 	; Overwrite current Z height with probe height - Spoilboard height - material height
-				msg "Z Offset: " [#4500 - #4002 - #4004]
+				G10 L20 P[#5220] Z[#4500 - #4002 - #4004] 	; Overwrite current Z height with probe height - Spoilboard height - material height
+				msg "Z Height at probe point: " [#4500 - #4002 - #4004]
 				G53 G0 Z#4506 ; Rapid retract to safe height
 				; returning to previous position"
 				G53 G0 Z#4506 ; Z Safe Height [Machine]
@@ -1056,25 +1217,34 @@ Sub PROBE_CUTOUT_AUTO ;called from GCODE to cut out piece
 	; #4004 - material thickness as programmed in GCODE
 	
 	TCAGuard off ;allow machine into tool change area as defined in TCA setup
-    ;Check ZHeight comp and switch off when on, remember the state in #5025, #5151 indicates that ZHeight comp is on    
-    #5025 = #5151
-    if [#5025 == 1]
-        ZHC off
-    endif
-	
+    ZHC off
+	G4 P0.5
+
 	M9 ; turn off coolant
 	M5 ; turn off spindle	
 	GOSUB SENSOR_CHECK
-   	MSG "CURRENT SPOILBOARD HEIGHT #4002: " [#4002] " MATERIAL HEIGHT: " #4004
+	;update tool
+	;M6 T[#5011]				; New Tool Number set
+	;msg "changed to Tool " #5011
+   	#5027 = #[5400 + #5011] ; new tool length
+	#5028 = #[5500 + #5011] ; new tool diameter
+
+	MSG "SPOILBOARD HEIGHT #4002: " [#4002] " MATERIAL HEIGHT: "#4004 " TOOL LENGTH: "#5027
+	G4 P3 ;wait 3 sec to read/pause
     #5398=1
+
 	IF [[#5398 == 1] AND [#5397 == 0]]	; OK button was pressed and RENDER Mode is off
-     	IF [ [#5017 <= 0] OR [ [#4509 + #5017 + 10] > [#4506] ] ] ;Estimated tool length is negative OR too long for sensor height
-            dlgmsg "Length must be between 0 and MAX, ok to restart"
+		IF [ [#5027 <= 0] OR [ [#4509 + #5027 + 10] > [#4506] ] ] ;Estimated tool length is negative OR too long for sensor height
+            dlgmsg "Length must be between 0 and MAX, ok to restart" "Tool Length: " 5027 "Tool Diameter: " 5028
             IF [#5398 == 1] ;OK pressed
+				#[5400 + #5011] = #5027 ; update length if manually changed in dialog
+				#[5500 + #5011] = #5028 ; update diameter if manually changed in dialog
 				msg "restarting measurement"
 				gosub PROBE_CUTOUT_AUTO
 			ELSE
 				msg "Cutout probing FAILED"
+				#5027 = 0 ; reset tool length
+				#5028 = 0 ; reset tool diameter
 				M30 ; cancel sequence
 		    ENDIF
 		ENDIF
@@ -1085,8 +1255,15 @@ Sub PROBE_CUTOUT_AUTO ;called from GCODE to cut out piece
 		G90
 		G53 G0 Z[#4506] ; Move to Z Safe
 		G53 G0 X[#4507] Y[#4508] ; Move to Tool Length Sensor Position
-		G53 G0 z[#4509 + #5017 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [estimated Tool Length] + 30 = MCS Z distance
-		G91 G1 Z-20 F800 	; slow Z minus 20
+		G53 G0 z[#4509 + #5027 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [recorded Tool Length] + 30 = MCS Z distance
+		G38.2 G91 Z-20 F500 	; slow Z minus 20 with probe active in case of crash
+	    IF [[#5067 == 1]	AND [#5380 == 0]] ; if sensor triggered and simulation mode is 0
+		    G91 G0 Z5
+			G90						; G90 -> Absolute distance mode
+			TCAGuard on ;disallow machine into tool change area as defined in TCA setup
+		    errmsg "Measurement aborted! -> Unexpected sensor trigger"
+        ENDIF
+		
 		G90
 		msg "Probing Table Z height"	
 		G53 G38.2 Z[#4509] F[#4504]	; Probe Z to sensor height with Probe Feed #4504
@@ -1097,8 +1274,8 @@ Sub PROBE_CUTOUT_AUTO ;called from GCODE to cut out piece
 		    IF [#5067 == 1]		; IF sensor point activated
 				G0 Z#5063	; Rapid move to sensor activation point
 				; setting spoilboard Z offset + material thickness
-				G92 Z[#4500 - #4002 - #4004] 	; Overwrite current Z height with probe height - Spoilboard height - material height
-				msg "Z Offset at probe point: " [#4500 - #4002 - #4004]
+				G10 L20 P[#5220] Z[#4500 - #4002 - #4004] 	; Overwrite current Z height with probe height - Spoilboard height - material height
+				msg "Z Height at probe point: " [#4500 - #4002 - #4004]
 				G53 G0 Z#4506 ; Rapid retract to safe height
 				; returning to previous position"
 				G53 G0 Z#4506 ; Z Safe Height [Machine]
@@ -1111,7 +1288,7 @@ Sub PROBE_CUTOUT_AUTO ;called from GCODE to cut out piece
 			    G90 
 			    DlgMsg "WARNING: No Sensor triggered! Try again?" 
 			    IF [#5398 == 1] ;OK 
-					GOSUB PROBE_CUTOUT
+					GOSUB PROBE_CUTOUT_AUTO
 			    ELSE
 				errmsg "Measurement failed!"
 			    ENDIF
@@ -1123,6 +1300,301 @@ Sub PROBE_CUTOUT_AUTO ;called from GCODE to cut out piece
 	TCAGuard on ;disallow machine into tool change area as defined in TCA setup
 
 ENDSUB
+
+; ------------------------------------------
+;   SPINOGY X22 Macros v1.5.2 for EdingCNC
+; ------------------------------------------
+;
+;   SPINOGY GmbH
+;   Brunnenweg 17
+;   64331 Weiterstadt
+;
+;   https://spinogy.de
+;
+; ------------------------------------------
+;
+;   SUPPORTED X22 SPINDLE MODELS:
+;   - CG005 - 25.000 rpm
+;   - CG006 - 30.000 rpm
+;   - CG007 - 35.000 rpm
+;   - CG008 - 40.000 rpm
+;   - CG009 - 45.000 rpm
+;   - CG010 - 50.000 rpm
+;
+; ------------------------------------------
+;
+;   VERSION HISTORY:
+;   - 1.0.0: first version
+;   - 1.1.0: use loops for speed calculation
+;   - 1.2.0: add configuration dialog
+;   - 1.3.0: add ramp up for spindle speeds
+;   - 1.4.0: add graphical dialogs
+;   - 1.5.0: check config against M90 setting
+;   - 1.5.1: first release
+;   - 1.5.2: fixed some typos and message length
+;
+; ------------------------------------------
+;
+;   CONFIGURATION VARIABLES (persistent):
+;   - #4337 - if configured
+;   - #4338 - configured spindle model
+;   - #4339 - configured spindle rpm
+;
+;   USED HELPER VARIABLES (non-persistent):
+;   - #1337 - loop speed counter
+;   - #1338 - loop interval counter
+;   - #1339 - loop ramp counter
+;   - #1340 - calculated rpm
+;
+; ------------------------------------------
+
+; configuration routine
+Sub spinogy_config
+    ; dialog message shows dialogPictures/Spinogy_Config.png
+    DlgMsg "Spinogy_Config" "Spindle Model" 4338
+
+    If [#5398 == 1]
+        ; check if user input is out of range
+        If [[#4338 < 5] or [#4338 > 10]]
+            ; reset config
+            #4337 = 0
+            #4338 = 0
+            #4339 = 0
+
+            ; dialog message shows dialogPictures/Spinogy_Error.png
+            DlgMsg "Spinogy_Error"
+
+            If [#5398 == 1]
+                GoSub spinogy_config
+            Else
+                ErrMsg "Spinogy configuration aborted."
+            EndIf
+        Else
+            If [#4338 == 5]
+                #4339 = 25000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG005 / 25.000 rpm"
+            EndIf
+
+            If [#4338 == 6]
+                #4339 = 30000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG006 / 30.000 rpm"
+            EndIf
+
+            If [#4338 == 7]
+                #4339 = 35000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG007 / 35.000 rpm"
+            EndIf
+
+            If [#4338 == 8]
+                #4339 = 40000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG008 / 40.000 rpm"
+            EndIf
+
+            If [#4338 == 9]
+                #4339 = 45000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG009 / 45.000 rpm"
+            EndIf
+
+            If [#4338 == 10]
+                #4339 = 50000
+                #4337 = 1
+
+                Msg "Configured Spindle: SPINOGY X22 CG010 / 50.000 rpm"
+            EndIf
+
+            ; check if eding cnc M90 setting is correctly configured, based on the spindle setting
+            If [#5394 < #4339]
+                WarnMsg "Your configured max spindle speed ("#5394") in M90 is lower than your configured spindle speed ("#4339"). Please check."
+            EndIf
+        EndIf
+    Else
+        Msg "Spinogy configuration aborted."
+    EndIf
+EndSub
+
+; special routine for warmup spinogy x22 spindles
+Sub spinogy_warmup
+    ; dialog message shows dialogPictures/Spinogy_Warmup.png
+    DlgMsg "Spinogy_Warmup"
+
+    If [#5398 == 1]
+        ; used routine variables
+        #1337 = 0 ; loop speed counter
+        #1339 = 0 ; loop ramp counter
+        #1340 = 0 ; calculated rpm
+
+        Msg "Starting Spinogy spindle warmup ..."
+		M8
+        ; move z up
+        Msg "Move Z to safe position ..."
+        G53 G0 Z0
+
+        ; loop 4 times to increment speed
+        While [#1337 < 4]
+            ; calculate destination speed
+            #1340 = [[#1337 + 1] * 6]
+
+            Msg "Ramp up spindle to "#1340".000 rpm and then hold for 5 minutes ..."
+
+            ; loop 3 times to ramp up spindle rpm
+            #1339 = 3
+            While [#1339 > 0]
+                Msg "Ramp up for 7 seconds ..."
+
+                ; increase by 1500 rpm in 7 second steps
+                M3 S[[#1340 * 1000] - [#1339 * 1500]]
+                G4 P[7]
+
+                ; decrement counter
+                #1339 = [#1339 - 1]
+            EndWhile
+
+            ; start spindle at desired rpm and run for 5 minutes
+            Msg "Hold "#1340".000 rpm for 5 minutes ..."
+            M3 S[#1340 * 1000]
+            G4 P[60 * 5]
+
+            ; increment counter
+            #1337 = [#1337 + 1]
+        EndWhile
+
+        ; finished warmup and stop spindle
+        M5
+        Msg "Spinogy spindle warmup finished!"
+    EndIf
+EndSub
+
+; special routine for spinogy x22 to evenly distribute grease
+Sub spinogy_greaserun
+    If [#4337 <> 1]
+        ErrMsg "Please run Spinogy configuration first."
+    EndIf
+
+    ; dialog message shows dialogPictures/Spinogy_Greaserun.png
+    DlgMsg "Spinogy_Greaserun"
+
+    If [#5398 == 1]
+        ; used routine variables
+        #1337 = 0 ; loop speed counter
+        #1338 = 0 ; loop interval counter
+        #1339 = 0 ; loop ramp counter
+        #1340 = 0 ; calculated rpm
+
+        Msg "Starting Spinogy grease distribution run ..."
+		M8
+        ; move z up
+        Msg "Move Z to safe position ..."
+        G53 G0 Z0
+
+        ; ---------
+        ; phase one
+        ; ---------
+
+        ; loop 3 times to increment speed
+        While [#1337 < 3]
+            ; calculate speed
+            #1340 = [[#1337 + 1] * 8]
+
+            ; loop 4 times for intervals
+            #1338 = 0
+            While [#1338 < 4]
+                Msg "Ramp up spindle to "#1340".000 rpm and then hold for 1 minutes ..."
+
+                ; loop 3 times to ramp up spindle rpm
+                #1339 = 3
+                While [#1339 > 0]
+                    Msg "Ramp up for 5 seconds ..."
+
+                    ; increase by 2000 rpm in 5 second steps
+                    M3 S[[#1340 * 1000] - [#1339 * 2000]]
+                    G4 P[5]
+
+                    ; decrement counter
+                    #1339 = [#1339 - 1]
+                EndWhile
+
+                ; start spindle at desired rpm and run for 1 minutes
+                Msg "Hold "#1340".000 rpm for 1 minute ..."
+                M3 S[#1340 * 1000]
+                G4 P[60 * 1]
+
+                ; turn off spindle and wait 2 minutes
+                Msg "Pause for 2 minutes ..."
+                M5
+                G4 P[60 * 2]
+
+                ; increment counter
+                #1338 = [#1338 + 1]
+            EndWhile
+
+            ; increment counter
+            #1337 = [#1337 + 1]
+        EndWhile
+
+        ; ---------
+        ; phase two
+        ; ---------
+
+        Msg "Ramp up spindle to 24.000 rpm and then hold for 30 minutes ..."
+
+        ; loop 3 times to ramp up spindle rpm
+        #1339 = 0
+        While [#1339 < 3]
+            Msg "Ramp up for 5 seconds ..."
+
+            ; increase by 6000 rpm in 5 second steps
+            M3 S[[#1339 + 1] * 6000]
+            G4 P[5]
+
+            ; increment counter
+            #1339 = [#1339 + 1]
+        EndWhile
+
+        ; start spindle at 24.000 rpm and run for 30 minutes
+        Msg "Turn spindle at 24.000 rpm for 30 minutes ..."
+        M03 S24000
+        G04 P[60 * 30]
+
+        ; turn off spindle and wait 5 minutes
+        Msg "Pause for 5 minutes ..."
+        M05
+        G04 P[60 * 5]
+
+        Msg "Ramp up spindle to "[#4339 / 1000]".000 rpm and then hold for 30 minutes ..."
+
+        ; loop 6 times to ramp up spindle rpm
+        #1339 = 0
+        While [#1339 < 7]
+            Msg "Ramp up for 3 seconds ..."
+
+            ; increase by 1/6 of the configured max rpm in 3 second steps
+            M3 S[[#1339 + 1] * [#4339 / 7]]
+            G4 P[3]
+
+            ; increment counter
+            #1339 = [#1339 + 1]
+        EndWhile
+
+        ; turn spindle at configured maximum rpm for 30 minutes
+        Msg "Turn spindle at "[#4339 / 1000]".000 rpm for 30 minutes ..."
+        M03 S[#4339]
+        G04 P[60 * 30]
+
+        ; finished run and stop spindle
+        M05
+        Msg "Spinogy spindle grease run finished!"
+    EndIf
+EndSub
 
 ;***************************************************************************************
 ; Configuration Macros
@@ -1220,7 +1692,7 @@ Sub PROBE_3D ;3D EdgeFinder Probing
        	    G91 G38.2 x-10 F[#4505]
         	G90
         		IF [#5067 == 1]				; When Sensor is triggered
-        			G92 X#4551
+        			G10 L20 P[#5220] X#4551
         			G91 G00 x-1
         			G90
 		        ENDIF
@@ -1237,7 +1709,7 @@ Sub PROBE_3D ;3D EdgeFinder Probing
 	    	G91 G38.2 x10 F[#4505]
 			G90
 			IF [#5067 == 1]			; When Sensor is triggered
-				G92 X#4552
+				G10 L20 P[#5220] X#4552
 				G91 G00 x1 
 				G90
 			ENDIF
@@ -1254,7 +1726,7 @@ Sub PROBE_3D ;3D EdgeFinder Probing
 		    G91 G38.2 y-10 F[#4505]
 			G90
 			IF [#5067 == 1]			; When Sensor is triggered
-				G92 y#4553
+				G10 L20 P[#5220] y#4553
 				G91 G00 y-1 
 				G90
 			ENDIF
@@ -1271,7 +1743,7 @@ Sub PROBE_3D ;3D EdgeFinder Probing
     	    G91 G38.2 y10 F[#4505]
     		G90
     		IF [#5067 == 1]				; When Sensor is triggered
-    			G92 y#4554
+    			G10 L20 P[#5220] y#4554
     			G91 G00 y1 
     			G90
     		ENDIF
