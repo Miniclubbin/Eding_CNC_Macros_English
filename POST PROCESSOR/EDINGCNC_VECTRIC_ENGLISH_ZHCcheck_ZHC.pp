@@ -11,19 +11,13 @@
 + Author        DD/MM/YYYY   Changes
 + ========      ===========  ================================
 + DJ-Bino       23/12/2013   PP written
-+ DJ-Bino       23/12/2013   Arcs and circular moves
-+ DJ-Bino       23/12/2013   Revamped for EdingCNC(V4)
-+ DJ-Bino       06/07/2014   Spindle Speed 
-+ DJ-Bino       06/07/2014   Dwell time 
-+ DJ-Bino       17/05/2018   Tool name 
-+ DJ-Bino       14/09/2018   Helix moves G02/G03
-+ DJ-Bino       19/06/2020	 Safe Z height G53/G28
 + MiniClubbin   19/12/2022   Translated to English, trimmed "new segment" lines to speed up gcode
 + MiniClubbin   21/12/2022   REMOVED G54 from HEADER block to allow for multiple work offsets
 + MiniClubbin   21/12/2022   Commented out M07 commands
 + MiniClubbin   27/12/2022   Adjusted footer: reordered M5/M9, commented out G28
 + MiniClubbin   17/06/2022   Uncommented G28, M07, added MCSZ0 in footer
 + MiniClubbin   17/07/2023   Removed "Zero Position" block from header
++ Added sub routine call to verify ZHC is enable at start of job
 
 +=======================================================
 
