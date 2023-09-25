@@ -25,9 +25,8 @@ Sub user_5 ; Tool Number Update
 	GOSUB TOOL_NBR_UPDATE
 ENDSUB
 ;***************************************************************************************
-Sub user_6 ; Probe for Z0, offset by .1mm for VCarve tolerance
-   	msg "Sub Z_PROBE_VCARVE"
-	goSub Z_PROBE_VCARVE
+Sub user_6 ; NOTHING
+   	msg "No action assigned"
 ENDSUB
 ;***************************************************************************************
 Sub user_7 ; Sub MOVE_WCS0_G54 ; Move to WCS XY0 Z5
@@ -78,8 +77,8 @@ Sub user_17 ; Move to WCS 0 Z5
    	GOSub WCS0_Z5
 ENDSUB
 ;***************************************************************************************
-Sub user_18 ; Tool Wear Detection
-    GOSUB TOOL_MEASURE_WEAR
+Sub user_18 ; NOTHING
+   	msg "No action assigned"
 ENDSUB
 ;***************************************************************************************
 Sub user_19 ; Spindle Warmup 
@@ -88,6 +87,24 @@ ENDSUB
 ;***************************************************************************************
 Sub user_20 ;3D EdgeFinder Probing
 	GOSUB PROBE_3D
+ENDSUB
+
+Sub user_21 ;reset temp variables for tool management
+	#3501 = 0 ; reset tool measurement status
+	#5015 = 0 ; reset Tool Change executed flag
+ENDSUB
+
+Sub user_22 ;reset temp variables for ZHC
+	#5025 = 0 ; reset FLAG ZHC active
+	#5026 = 0 ; reset FLAG ZHC active
+ENDSUB
+
+Sub user_49 ;Spinogy Warmup
+	GOSub spinogy_warmup
+ENDSUB
+
+Sub user_50 ;Spinogy Grease run
+	GOSub spinogy_greaserun
 ENDSUB
 
 ;***************************************************************************************
@@ -109,6 +126,11 @@ SUB xhc_macro_1
 	G10L20P1X0Y0
 ENDSUB
 
+SUB xhc_macro_2
+	msg"Handwheel called Tool Change"
+	GOSUB TOOL_CHANGE_DLG
+ENDSUB
+
 SUB xhc_macro_5
 	g28 ; Move to Machine 0 (Home)
 ENDSUB
@@ -119,8 +141,8 @@ SUB xhc_macro_6
 ENDSUB
 
 SUB xhc_macro_7
-	msg"Handwheel called Tool Change"
-	GOSUB TOOL_CHANGE_DLG
+	msg"Handwheel called XY0"
+	GoSub WCS_0
 ENDSUB
 
 SUB xhc_macro_8
