@@ -1,49 +1,11 @@
 ;***************************************************************************************
-;2023AUG_V7.3
+;2023JUL_V7.2
 ;EDING CNC
 ;Based on SOROTEC MACRO CNC V2.1e.1 Without ATC
 ;Derived from SOROTEC
 ;Translated by MiniClubbin
 ;***************************************************************************************
-;CHANGELOG
-;Formatted spacing to enable folding in VSCode
-;Renamed subroutines for easier user button assignment
-;Split user macros into user_macro.cnc file for subroutine mapping
-;Split sensor_check into separate subroutine
-;Optimized sub Z_PROBE to return to probing location after tool measurement
-;Optimized sub tool_measure return-position logic
-;Optimized sub config to match new naming convention
-;Optimized sub config to skip unused subroutines
-;Optimized sub TOOL_MEASURE_WEAR to include cancel and return-position logic 
-;Added sub TOOL_SENSOR_CALIBRATE to calibrate spindle chuck height before use in tool length measurement
-;Added sub Z_PROBE_VCARVE to set Z0 .1mm above workpiece
-;Added several movement subroutines to call positional moves to various frequented locations for use as handwheel macros
-;Added M30 to some subroutines for cancelation logic
-;Added terminal message for routine tracking/debugging
-;Added ELSE logic for dialog cancel
-;Added FLAG #68 to track workpiece rotation compensation active
-;Added workpiece rotation reset to homing sequence
-;Replaced several error messages with normal terminal messages to speed up workflow
-;Updated probing operations to include a rapid retract and slow probe to account for mechanical tool sensors
-;Configured sub_config and sub_spindlewarm for spindle warmup on Teknomotor 1.1kW spindle
-;Edited Sub TOOL_SENSOR_CALIBRATE to temporarily avoid movement to TCP
-;Edited variables to allow for differing probe height values for Z probe and TLO probe
-;Added sub probe_cutout and associated variables to automatically set Z0 based on GCODE material thickness and spoilboard surface to avoid manual measurement and protect spoilboard surface
-;Added Tool Change Area Guard on/off and ZHCM on/off commands to all tool measurement subs
-;Edited sub zhcmgrid to allow specification of Y grid size
-;Added warning for sub zero_set_rotation that XY0 must be lower left
-;Edited tool measurement macros to protect against crashing tools into sensors after incorrect length estimates
-;Removed unnecessary msg commands
-;Edited sub change_tool to remove redundant code
-;Added check and skip function to sub change_tool for tools that are already inserted and measured
-;Removed break check/tool_measure_wear subs and components
-;Removed sub probe_z_vcarve due to non-use
-;Added dlgmsg to ZHC sequence to guard incorrect XYZ 0 setting
-;Added 3d probe check to ZHC sequence
-;Added logic to ZHC sequence to calculate probing distance based on length and number of scan points
-;Added XY clearance distance and associated calculations in ZHCM
-;Added ZHC checks for probing operations
-;***************************************************************************************
+
 
 ;Variables used
 
@@ -530,6 +492,12 @@ Sub Z_PROBE ; Probe for Work Z-zero height
 			M9 ; turn off coolant
 	        M5 ; turn off spindle
 			msg "Probing Z height"
+
+			;IF [#5008 == 0] ;current tool is 0
+			;	G91 g0 x-8 ;INCREMENTAL MOVE TO ALIGN EMPTY HOLDER
+			;	G90
+			;ENDIF
+
 			G38.2 G91 z-50 F[#4512] 	; Probe towards sensor at probe feedrate
 			IF [#5067 == 1]			; IF sensor point activated
 			    G91 G0 Z2              ; back off trigger point 
@@ -585,8 +553,8 @@ sub change_tool ; TOOL CHANGE SEQUENCE
 ; skip tool change if 70-series tool, proceed to set Z0 for material thickness
 IF [[#5011 >= 70] AND [#5011 <= 79]] ;new tool is 70-series auto cutout
 		goSub PROBE_CUTOUT_AUTO	
-		M6 T[#5011]				; New Tool Number set
-		msg "Tool " #5008" changed to Tool " #5011
+		;M6 T[#5011]				; New Tool Number set
+		;msg "Tool " #5008" changed to Tool " #5011
 ELSE		
 	TCAGuard off ;allow machine into tool change area as defined in TCA setup
     
@@ -775,6 +743,12 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 		M5 ; turn off spindle
 		G53 G0 z[#4506]			; Move to Z Safe Height [Machine] 
 		G53 G0 x[#5019] y[#5020]		; Move to Tool Length Sensor Position
+
+		IF [#5008 == 0] ;current tool is 0
+			G91 g0 x-8 ;INCREMENTAL MOVE TO ALIGN EMPTY HOLDER
+			G90
+		ENDIF
+
 		G53 G0 z[#4509 + #5027 + 30] 	; Rapid Z to [MCS chuck probe trigger] + [recorded Tool Length] + 30 = MCS Z distance
 		G38.2 G91 Z-20 F500 	; slow Z minus 20 with probe active in case of crash
 	    IF [[#5067 == 1]	AND [#5380 == 0]] ; if sensor triggered and simulation mode is 0
@@ -801,10 +775,17 @@ Sub TOOL_MEASURE ; Tool Length Measurement
 
 			; calculate tool length
 			IF [#5067 == 1]				; Sensor is triggered
+				;Calibrate spindle nose measurement if probing empty toolholder T0
+				IF [#5008 == 0] ;current tool is 0
+					#4509=#5053 
+					MSG "Updated chuck height : "#4509
+				ENDIF
+
 				#5021 = [#5053 - #4509]	; Recorded tool length = sensor point - chuck height
 				G53 G0 z[#4506]	; Z Safe Height [Machine]
 				;msg "Tool Length = " #5021
 				;Update tool length in tool table
+
 				#[5400 + #5016] = #5021	;[tool table + current tool number] = measured length
 				msg "Tool Length = " #5021" written to table line "#5016
 				
@@ -913,12 +894,12 @@ Sub TOOL_NBR_UPDATE  ; Update Tool Number
     #5011 = [#5008]
     Dlgmsg "!!! Tool Update !!!" "New Tool Number" 5011 "Current Tool Number" 5008 
     IF [#5011 > 99] 
-		Dlgmsg "Tool Number Incorrect: only 1-99"
+		Dlgmsg "Tool Number Incorrect: only 0-99"
 		#5011 = #5008				; [New Tool Number] reset to [current tool number]
 		M30
     ELSE
 		#5015 = 1 ; Was tool successfully updated 1=Yes
-		IF [[#5011] > 0] 
+		IF [[#5011] < 100] 
 		    M6 T[#5011]
 			msg "Tool # updated to T" #5011
 		ENDIF
@@ -1304,52 +1285,52 @@ ENDSUB
 
 ; ------------------------------------------
 ;   SPINOGY X22 Macros v1.5.2 for EdingCNC
-; ------------------------------------------
-;
-;   SPINOGY GmbH
-;   Brunnenweg 17
-;   64331 Weiterstadt
-;
-;   https://spinogy.de
-;
-; ------------------------------------------
-;
-;   SUPPORTED X22 SPINDLE MODELS:
-;   - CG005 - 25.000 rpm
-;   - CG006 - 30.000 rpm
-;   - CG007 - 35.000 rpm
-;   - CG008 - 40.000 rpm
-;   - CG009 - 45.000 rpm
-;   - CG010 - 50.000 rpm
-;
-; ------------------------------------------
-;
-;   VERSION HISTORY:
-;   - 1.0.0: first version
-;   - 1.1.0: use loops for speed calculation
-;   - 1.2.0: add configuration dialog
-;   - 1.3.0: add ramp up for spindle speeds
-;   - 1.4.0: add graphical dialogs
-;   - 1.5.0: check config against M90 setting
-;   - 1.5.1: first release
-;   - 1.5.2: fixed some typos and message length
-;
-; ------------------------------------------
-;
-;   CONFIGURATION VARIABLES (persistent):
-;   - #4337 - if configured
-;   - #4338 - configured spindle model
-;   - #4339 - configured spindle rpm
-;
-;   USED HELPER VARIABLES (non-persistent):
-;   - #1337 - loop speed counter
-;   - #1338 - loop interval counter
-;   - #1339 - loop ramp counter
-;   - #1340 - calculated rpm
-;
-; ------------------------------------------
+	; ------------------------------------------
+	;
+	;   SPINOGY GmbH
+	;   Brunnenweg 17
+	;   64331 Weiterstadt
+	;
+	;   https://spinogy.de
+	;
+	; ------------------------------------------
+	;
+	;   SUPPORTED X22 SPINDLE MODELS:
+	;   - CG005 - 25.000 rpm
+	;   - CG006 - 30.000 rpm
+	;   - CG007 - 35.000 rpm
+	;   - CG008 - 40.000 rpm
+	;   - CG009 - 45.000 rpm
+	;   - CG010 - 50.000 rpm
+	;
+	; ------------------------------------------
+	;
+	;   VERSION HISTORY:
+	;   - 1.0.0: first version
+	;   - 1.1.0: use loops for speed calculation
+	;   - 1.2.0: add configuration dialog
+	;   - 1.3.0: add ramp up for spindle speeds
+	;   - 1.4.0: add graphical dialogs
+	;   - 1.5.0: check config against M90 setting
+	;   - 1.5.1: first release
+	;   - 1.5.2: fixed some typos and message length
+	;
+	; ------------------------------------------
+	;
+	;   CONFIGURATION VARIABLES (persistent):
+	;   - #4337 - if configured
+	;   - #4338 - configured spindle model
+	;   - #4339 - configured spindle rpm
+	;
+	;   USED HELPER VARIABLES (non-persistent):
+	;   - #1337 - loop speed counter
+	;   - #1338 - loop interval counter
+	;   - #1339 - loop ramp counter
+	;   - #1340 - calculated rpm
+	;
+	; ------------------------------------------
 
-; configuration routine
+	; configuration routine
 Sub spinogy_config
     ; dialog message shows dialogPictures/Spinogy_Config.png
     DlgMsg "Spinogy_Config" "Spindle Model" 4338
@@ -1644,10 +1625,12 @@ sub CFG_TOOLMEASUREPOS
 	;#4525 Position Y after Tool Length Measurement
 	
 ENDSUB
-;***************************************************************************************
+
 SUB CFG_SPOILBOARD
 	Dlgmsg "Spoilboard Height" "spoilboard thickness: " 4002
 ENDSUB
+;***************************************************************************************
+
 
 ;***************************************************************************************
 ; Available Operations:
@@ -1667,5 +1650,3 @@ ENDSUB
 	;#define NOT              !
 	;#define OR               ||
 	;#define SET_TO           =
-
-
