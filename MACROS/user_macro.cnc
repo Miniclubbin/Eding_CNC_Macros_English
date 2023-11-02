@@ -81,12 +81,12 @@ Sub user_18 ; NOTHING
    	msg "No action assigned"
 ENDSUB
 ;***************************************************************************************
-Sub user_19 ; Spindle Warmup 
-	GOSUB SPINDLE_WARMUP
+Sub user_19 ; NOTHING
+   	msg "No action assigned"
 ENDSUB
 ;***************************************************************************************
-Sub user_20 ;3D EdgeFinder Probing
-	GOSUB PROBE_3D
+Sub user_20 ; NOTHING
+   	msg "No action assigned"
 ENDSUB
 
 Sub user_21 ;reset temp variables for tool management
