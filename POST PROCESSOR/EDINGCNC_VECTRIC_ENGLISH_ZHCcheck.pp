@@ -2,7 +2,7 @@
 +
 + Vectric machine output configuration file
 + Post-Processor for Vectric after Version 9.5
-+ Post-Processor for EdingCNC(V4)
++ Post-Processor for EdingCNC(V5)
 +
 +=======================================================
 +
@@ -11,17 +11,22 @@
 + Author        DD/MM/YYYY   Changes
 + ========      ===========  ================================
 + DJ-Bino       23/12/2013   PP written
+
 + MiniClubbin   19/12/2022   Translated to English, trimmed "new segment" lines to speed up gcode
 + MiniClubbin   21/12/2022   REMOVED G54 from HEADER block to allow for multiple work offsets
 + MiniClubbin   21/12/2022   Commented out M07 commands
 + MiniClubbin   27/12/2022   Adjusted footer: reordered M5/M9, commented out G28
 + MiniClubbin   17/06/2022   Uncommented G28, M07, added MCSZ0 in footer
 + MiniClubbin   17/07/2023   Removed "Zero Position" block from header
-+ Added sub routine call to verify ZHC is enable at start of job
++ MiniClubbin   17/08/2023   Added subroutine reference for auto probing CUTOUT
++ MiniClubbin   17/08/2023   Removed G43 Hxx from tool change
++ MiniClubbin   21/09/2023   Added M08 to programs to start chiller for spindle
++ MiniClubbin   12/2023     Eding V5 revamp - Removed material comments from header, added log messages
+
 
 +=======================================================
 
-POST_NAME = "EDINGCNC ZHC (*.nc)"
+POST_NAME = "EDINGCNC ZHC 3 (*.nc)"
 
 FILE_EXTENSION = "NC"
 
@@ -75,23 +80,15 @@ VAR DWELL_TIME = [DWELL|A|P|1.2]
 
 begin HEADER
 " ( First Tool [T]: [TOOLNAME] ) "
-" (goSUB ZHC_CHECK) "
 " #4004=[ZLENGTH] "
 " (goSub PROBE_CUTOUT_AUTO) "
 
-
 "%"
-" G00 G21 G40 G49 "
+" LogFile [34][TP_FILENAME].txt[34] 1 "
+" LogMsg %d [34] TIME-Program: [TP_FILENAME] Started[34] "
+" G00 G21 G40 "
 " G17 G80 G90 G94 G99 "
-" G64 P0.1 R5 S90 D0.01 "
-" ( Program: [TP_FILENAME] )"
-" (   Stock Dimensions )"
-" (  X Min = [XMIN] | X Max = [XMAX] )"
-" (  Y MIN = [YMIN] | Y Max = [YMAX] )"
-" (  Z Min = [ZMIN] | Z Max = [ZMAX] )"
-" (--------------------------------------)"
-" (   Workpiece Home Position )"
-" (  X = [XH] Y = [YH] Z = [ZH] )"
+" G64 P0.1 R6 S100 D0.002 "
 " (  Safe Height  )"
 " (  Z = [SAFEZ] )"
 " (--------------------------------------)"
@@ -101,15 +98,17 @@ begin HEADER
 " ( Feedrate:      [FC] mm/min )"
 " ( Plunge Rate:   [FP] mm/min )"
 " ( Spindle Speed: [S] RPM )"
+
 " G00 G53 Z0"
-" Msg[34] ***INSERT TOOL T[T] [TOOLNAME] [34] "
+" Msg [34] INSERT TOOL T[T] [TOOLNAME] [34] "
 " T[T] M06"
+" LogMsg %d [34] TOOLCHANGE-Program: [TP_FILENAME] Tool [T] [TOOLNAME][34] "
 " goSUB ZHC_CHECK "
 " M08"
 " [S] M03"
 " Msg[34] T[T]: [TOOLNAME] [34] "
 " Msg[34] Toolpath: [TOOLPATH_NAME] [34] "
-" Msg[34] Time: [34] %d "
+
 " M07"
 " G00 [XH] [YH]"
 " G00 [ZH]"
@@ -128,6 +127,7 @@ begin TOOLCHANGE
 " ( Previous Tool: T[TP] )"
 " Msg[34] ***INSERT TOOL T[T] [TOOLNAME] [34] "
 " T[T] M06"
+" LogMsg %d [34] TOOLCHANGE-Program: [TP_FILENAME] Changed Tool [T] [TOOLNAME][34] "
 " (insert macros here) "
 " M08"
 " [S] M03"
@@ -281,7 +281,7 @@ begin FOOTER
 " M05 M09 (Shutdown spindle/coolant)"
 " Msg[34] Going to Machine Home [34] "
 " G28 ( Move to Machine Home )"
-" Msg[34] Machine Home reached [34] "
-" Msg[34] Time: [34] %d "
+" Msg [34]Machine Home reached [34] "
+" LogMsg %d [34] TIME-Program: [TP_FILENAME] Finished [34] "
 " M30 "
 "%"
