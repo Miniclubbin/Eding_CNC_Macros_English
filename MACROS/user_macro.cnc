@@ -5,6 +5,14 @@
 ; The below layout matches the "macro.cnc" file and icons contained in the icon folder
 ;
 ;***************************************************************************************
+Sub OP25_1 ; Move to MCS 0
+    GOSUB MOVE_Machine0
+ENDSUB
+;***************************************************************************************
+Sub OP25_2 ; Move to WCS 0
+    GOSub WCS_0
+ENDSUB
+;***************************************************************************************
 Sub user_1 ; Probe for Work Z-zero height
     GOSUB Z_PROBE	
 ENDSUB
@@ -53,8 +61,8 @@ Sub user_11 ; Z Safe
 	GOSub RAISE_Z
 ENDSUB
 ;***************************************************************************************
-Sub user_12 ; MOVE_Machine0
-	GOSub MOVE_Machine0 ; Move to Machine 0 (Home)
+Sub user_12 ; MCONFIGURE TOOL RACK POSITIONS
+	GOSub CFG_TOOLRACK ; cONFIG TOOL RACK
 ENDSUB
 ;***************************************************************************************
 Sub user_13 ; Move to WCS 0 Safe Z
@@ -146,8 +154,8 @@ SUB xhc_macro_7
 ENDSUB
 
 SUB xhc_macro_8
-	msg"Handwheel called move to TMP"
-	gosub TMP ;Move to Tool Measurement Position
+	msg"Handwheel called move to TLO"
+	gosub TLO ;Move to Tool Measurement Position
 ENDSUB
 
 SUB xhc_macro_9
